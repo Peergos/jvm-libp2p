@@ -12,11 +12,10 @@
  */
 package io.libp2p.crypto
 
+import io.libp2p.core.crypto.hmacSha
 import io.libp2p.etc.types.toHex
-import org.bouncycastle.crypto.digests.SHA256Digest
-import org.bouncycastle.crypto.digests.SHA512Digest
-import org.bouncycastle.crypto.macs.HMac
-import org.bouncycastle.crypto.params.KeyParameter
+import javax.crypto.SecretKey
+import javax.crypto.spec.SecretKeySpec
 
 /**
  * ErrRsaKeyTooSmall is returned when trying to generate or parse an RSA key
@@ -63,14 +62,15 @@ fun stretchKeys(cipherType: String, hashType: String, secret: ByteArray): Pair<S
     val result = ByteArray(2 * (ivSize + cipherKeySize + hmacKeySize))
 
     val hmac = when (hashType) {
-        "SHA256" -> HMac(SHA256Digest())
-        "SHA512" -> HMac(SHA512Digest())
+        "SHA256" -> hmacSha("HMACSHA256")
+        "SHA512" -> hmacSha("HMACSHA512")
         else -> throw IllegalArgumentException("Unsupported hash function: $hashType")
     }
-    hmac.init(KeyParameter(secret))
+    val secretKey: SecretKey = SecretKeySpec(secret, hashType)
+    hmac.init(secretKey)
 
     hmac.update(seed, 0, seed.size)
-    val a = ByteArray(hmac.macSize)
+    val a = ByteArray(hmac.macLength)
     hmac.doFinal(a, 0)
 
     var j = 0
@@ -79,7 +79,7 @@ fun stretchKeys(cipherType: String, hashType: String, secret: ByteArray): Pair<S
         hmac.update(a, 0, a.size)
         hmac.update(seed, 0, seed.size)
 
-        val b = ByteArray(hmac.macSize)
+        val b = ByteArray(hmac.macLength)
         hmac.doFinal(b, 0)
 
         var todo = b.size
