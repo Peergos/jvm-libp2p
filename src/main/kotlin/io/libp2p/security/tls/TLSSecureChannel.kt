@@ -15,6 +15,7 @@ import io.libp2p.crypto.keys.generateEd25519KeyPair
 import io.libp2p.etc.REMOTE_PEER_ID
 import io.libp2p.security.InvalidRemotePubKey
 import io.netty.buffer.ByteBuf
+import io.netty.buffer.ByteBufAllocator
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.SimpleChannelInboundHandler
 import io.netty.handler.ssl.ApplicationProtocolConfig
@@ -85,14 +86,14 @@ fun buildTlsHandler(
     expectedRemotePeer: Optional<PeerId>,
     muxerIds: List<String>,
     certAlgorithm: String,
-    ch: P2PChannel,
+    isInitiator: Boolean,
     handshakeComplete: CompletableFuture<SecureChannel.Session>,
-    ctx: ChannelHandlerContext
+    alloc: ByteBufAllocator
 ): SslHandler {
     val connectionKeys = if (certAlgorithm.equals("ECDSA")) generateEcdsaKeyPair() else generateEd25519KeyPair()
     val javaPrivateKey = getJavaKey(connectionKeys.first)
     val sslContext = (
-        if (ch.isInitiator)
+        if (isInitiator)
             SslContextBuilder.forClient().keyManager(javaPrivateKey, listOf(buildCert(localKey, connectionKeys.first)))
         else
             SslContextBuilder.forServer(javaPrivateKey, listOf(buildCert(localKey, connectionKeys.first)))
@@ -110,8 +111,8 @@ fun buildTlsHandler(
             )
         )
         .build()
-    val handler = sslContext.newHandler(ctx.alloc())
-    handler.sslCloseFuture().addListener { _ -> ctx.close() }
+    val handler = sslContext.newHandler(alloc)
+//    handler.sslCloseFuture().addListener { _ -> ctx.close() }
     val handshake = handler.handshakeFuture()
     val engine = handler.engine()
     handshake.addListener { fut ->
@@ -131,7 +132,6 @@ fun buildTlsHandler(
                     selectedProtocol
                 )
             )
-            ctx.fireChannelActive()
         }
     }
     return handler
@@ -150,8 +150,10 @@ private class ChannelSetup(
         if (! activated) {
             activated = true
             val expectedRemotePeerId = ctx.channel().attr(REMOTE_PEER_ID).get()
-            ctx.channel().pipeline().addLast(buildTlsHandler(localKey, Optional.ofNullable(expectedRemotePeerId), muxerIds, certAlgorithm, ch, handshakeComplete, ctx))
+            ctx.channel().pipeline().addLast(buildTlsHandler(localKey, Optional.ofNullable(expectedRemotePeerId),
+                muxerIds, certAlgorithm, ch.isInitiator, handshakeComplete, ctx.alloc()))
             ctx.channel().pipeline().remove(SetupHandlerName)
+            handshakeComplete.also { ctx.fireChannelActive() }
         }
     }
 
