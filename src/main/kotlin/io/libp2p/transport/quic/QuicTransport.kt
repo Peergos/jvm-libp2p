@@ -138,17 +138,18 @@ class QuicTransport(
     }
 
     override fun dial(addr: Multiaddr, connHandler: ConnectionHandler, preHandler: ChannelVisitor<P2PChannel>?):
-            CompletableFuture<Connection> {
+        CompletableFuture<Connection> {
         if (closed) throw Libp2pException("Transport is closed")
 
         val handshakeComplete = CompletableFuture<SecureChannel.Session>()
         val channelHandler = clientTransportBuilder(addr, handshakeComplete)
 
-        val chanFuture = QuicChannel.newBootstrap(client.clone()
-            .remoteAddress(fromMultiaddr(addr))
-            .handler(channelHandler)
-            .connect().channel())
-            // Use the same allocator for the streams.
+        val chanFuture = QuicChannel.newBootstrap(
+            client.clone()
+                .remoteAddress(fromMultiaddr(addr))
+                .handler(channelHandler)
+                .connect().channel()
+        )
             .streamOption(ChannelOption.ALLOCATOR, allocator)
             .option(ChannelOption.AUTO_READ, true)
             .option(ChannelOption.ALLOCATOR, allocator)
@@ -174,7 +175,7 @@ class QuicTransport(
         chanFuture.also { registerChannel(it.get()) }
         chanFuture.also {
             val connection = ConnectionOverNetty(it.get(), this, true)
-            connection.setMuxerSession(object : StreamMuxer.Session{
+            connection.setMuxerSession(object : StreamMuxer.Session {
                 override fun <T> createStream(protocols: List<ProtocolBinding<T>>): StreamPromise<T> {
                     TODO("Not yet implemented")
                 }
@@ -245,12 +246,14 @@ class QuicTransport(
                 if (!negotiatedProtocols.equals(listOf("libp2p")))
                     handshakeComplete.completeExceptionally(IllegalStateException("Quic handshake failed. Negotiated: " + negotiatedProtocols))
                 else
-                    handshakeComplete.complete(SecureChannel.Session(
-                        PeerId.fromPubKey(localKey.publicKey()),
-                        verifyAndExtractPeerId(engine.session.peerCertificates),
-                        getPublicKeyFromCert(engine.session.peerCertificates),
-                        "libp2p"
-                    ))
+                    handshakeComplete.complete(
+                        SecureChannel.Session(
+                            PeerId.fromPubKey(localKey.publicKey()),
+                            verifyAndExtractPeerId(engine.session.peerCertificates),
+                            getPublicKeyFromCert(engine.session.peerCertificates),
+                            "libp2p"
+                        )
+                    )
             }
             pipeline.addLast(handler)
 //            handshakeComplete.also { ctx.fireChannelActive() }
