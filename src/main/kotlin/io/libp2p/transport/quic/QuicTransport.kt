@@ -6,6 +6,8 @@ import io.libp2p.core.multiformats.Multiaddr
 import io.libp2p.core.multiformats.MultiaddrDns
 import io.libp2p.core.multiformats.Protocol
 import io.libp2p.core.multiformats.Protocol.*
+import io.libp2p.core.multistream.ProtocolBinding
+import io.libp2p.core.mux.StreamMuxer
 import io.libp2p.core.security.SecureChannel
 import io.libp2p.core.transport.Transport
 import io.libp2p.crypto.keys.generateEcdsaKeyPair
@@ -49,11 +51,13 @@ class QuicTransport(
 
     private var client by lazyVar {
         Bootstrap().group(workerGroup)
-            .channel(if (Epoll.isAvailable()) {
-                EpollDatagramChannel::class.java
-            } else {
-                NioDatagramChannel::class.java
-            })
+            .channel(
+                if (Epoll.isAvailable()) {
+                    EpollDatagramChannel::class.java
+                } else {
+                    NioDatagramChannel::class.java
+                }
+            )
             .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, connectTimeout.toMillis().toInt())
     }
 
@@ -137,7 +141,8 @@ class QuicTransport(
             CompletableFuture<Connection> {
         if (closed) throw Libp2pException("Transport is closed")
 
-        val channelHandler = clientTransportBuilder(addr)
+        val handshakeComplete = CompletableFuture<SecureChannel.Session>()
+        val channelHandler = clientTransportBuilder(addr, handshakeComplete)
 
         val chanFuture = QuicChannel.newBootstrap(client.clone()
             .remoteAddress(fromMultiaddr(addr))
@@ -148,25 +153,33 @@ class QuicTransport(
             .option(ChannelOption.AUTO_READ, true)
             .option(ChannelOption.ALLOCATOR, allocator)
             .remoteAddress(fromMultiaddr(addr))
-            .streamHandler(object : ChannelHandler {
-                override fun handlerAdded(ctx: ChannelHandlerContext?) {
-                    TODO("Not yet implemented")
-                }
+            .streamHandler(
+                object : ChannelHandler {
+                    override fun handlerAdded(ctx: ChannelHandlerContext?) {
+                        TODO("Not yet implemented")
+                    }
 
-                override fun handlerRemoved(ctx: ChannelHandlerContext?) {
-                    TODO("Not yet implemented")
-                }
+                    override fun handlerRemoved(ctx: ChannelHandlerContext?) {
+                        TODO("Not yet implemented")
+                    }
 
-                override fun exceptionCaught(ctx: ChannelHandlerContext?, cause: Throwable?) {
-                    TODO("Not yet implemented")
+                    override fun exceptionCaught(ctx: ChannelHandlerContext?, cause: Throwable?) {
+                        TODO("Not yet implemented")
+                    }
                 }
-            })
+            )
             .connect()
 
         val res = CompletableFuture<Connection>()
         chanFuture.also { registerChannel(it.get()) }
         chanFuture.also {
             val connection = ConnectionOverNetty(it.get(), this, true)
+            connection.setMuxerSession(object : StreamMuxer.Session{
+                override fun <T> createStream(protocols: List<ProtocolBinding<T>>): StreamPromise<T> {
+                    TODO("Not yet implemented")
+                }
+            })
+            connection.setSecureSession(handshakeComplete.get())
             res.complete(connection)
         }
         return res
@@ -209,14 +222,14 @@ class QuicTransport(
     internal class QuicClientInitializer(
         private val localKey: PrivKey,
         private val remotePeerId: PeerId?,
-        private val certAlgorithm: String
+        private val certAlgorithm: String,
+        private val handshakeComplete: CompletableFuture<SecureChannel.Session>
     ) : ChannelInitializer<NioDatagramChannel>() {
 
         public override fun initChannel(ch: NioDatagramChannel) {
             remotePeerId?.also { ch.attr(REMOTE_PEER_ID).set(it) }
             val pipeline = ch.pipeline()
             val expectedRemotePeerId = ch.attr(REMOTE_PEER_ID).get()
-            val handshakeComplete = CompletableFuture<SecureChannel.Session>()
             val connectionKeys = if (certAlgorithm.equals("ECDSA")) generateEcdsaKeyPair() else generateEd25519KeyPair()
             val javaPrivateKey = getJavaKey(connectionKeys.first)
             val sslContext = QuicSslContextBuilder.forClient()
@@ -249,8 +262,9 @@ class QuicTransport(
     ): ChannelHandler = TODO(addr.toString())
 
     fun clientTransportBuilder(
-        addr: Multiaddr
-    ): ChannelHandler = QuicClientInitializer(localKey, addr.getPeerId(), certAlgorithm)
+        addr: Multiaddr,
+        handshakeComplete: CompletableFuture<SecureChannel.Session>
+    ): ChannelHandler = QuicClientInitializer(localKey, addr.getPeerId(), certAlgorithm, handshakeComplete)
 
     fun udpPortFromMultiaddr(addr: Multiaddr) =
         addr.components.find { p -> p.protocol == Protocol.UDP }
