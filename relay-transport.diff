@@ -1,0 +1,110 @@
+diff --git a/libp2p/src/test/java/io/libp2p/core/HostTestJava.java b/libp2p/src/test/java/io/libp2p/core/HostTestJava.java
+index bd4f509e..c1c400d3 100644
+--- a/libp2p/src/test/java/io/libp2p/core/HostTestJava.java
++++ b/libp2p/src/test/java/io/libp2p/core/HostTestJava.java
+@@ -12,9 +12,12 @@ import io.libp2p.security.noise.*;
+ import io.libp2p.security.tls.*;
+ import io.libp2p.transport.tcp.TcpTransport;
+ import io.netty.handler.logging.LogLevel;
+-import java.util.concurrent.CompletableFuture;
+-import java.util.concurrent.ExecutionException;
+-import java.util.concurrent.TimeUnit;
++
++import java.util.List;
++import java.util.concurrent.*;
++import java.util.stream.Collectors;
++import java.util.stream.IntStream;
++
+ import kotlin.Pair;
+ import org.junit.jupiter.api.Assertions;
+ import org.junit.jupiter.api.Test;
+@@ -156,7 +159,7 @@ public class HostTestJava {
+ 
+   @Test
+   void largeBlob() throws Exception {
+-    int blobSize = 1024 * 1024;
++    int blobSize = 2 * 1024 * 1024;
+     String localListenAddress = "/ip4/127.0.0.1/tcp/40002";
+ 
+     Host clientHost =
+@@ -192,27 +195,11 @@ public class HostTestJava {
+         localListenAddress + "/p2p/" + serverHost.getPeerId(),
+         serverHost.listenAddresses().get(0).toString());
+ 
+-    StreamPromise<BlobController> blob =
+-        clientHost
+-            .getNetwork()
+-            .connect(serverHost.getPeerId(), new Multiaddr(localListenAddress))
+-            .thenApply(it -> it.muxerSession().createStream(new Blob(blobSize)))
+-            .join();
+-
+-    Stream blobStream = blob.getStream().get(5, TimeUnit.SECONDS);
+-    System.out.println("Blob stream created");
+-    BlobController blobCtr = blob.getController().get(5, TimeUnit.SECONDS);
+-    System.out.println("Blob controller created");
+-
+-    for (int i = 0; i < 10; i++) {
+-      long latency = blobCtr.blob().join();
+-      System.out.println("Blob round trip is " + latency);
+-    }
+-    blobStream.close().get(5, TimeUnit.SECONDS);
+-    System.out.println("Blob stream closed");
+-
+-    Assertions.assertThrows(
+-        ExecutionException.class, () -> blobCtr.blob().get(5, TimeUnit.SECONDS));
++    sendBlobsOnStream(blobSize, clientHost, serverHost, localListenAddress);
++    List<? extends ForkJoinTask<?>> futs = IntStream.range(0, 10)
++            .mapToObj(i -> ForkJoinPool.commonPool().submit(() -> sendBlobsOnStream(blobSize, clientHost, serverHost, localListenAddress)))
++            .collect(Collectors.toList());
++    futs.forEach(f -> f.join());
+ 
+     clientHost.stop().get(5, TimeUnit.SECONDS);
+     System.out.println("Client stopped");
+@@ -220,6 +207,34 @@ public class HostTestJava {
+     System.out.println("Server stopped");
+   }
+ 
++  void sendBlobsOnStream(int blobSize, Host clientHost, Host serverHost, String localListenAddress) {
++    try {
++      StreamPromise<BlobController> blob =
++              clientHost
++                      .getNetwork()
++                      .connect(serverHost.getPeerId(), new Multiaddr(localListenAddress))
++                      .thenApply(it -> it.muxerSession().createStream(new Blob(blobSize)))
++                      .join();
++
++      Stream blobStream = blob.getStream().get(5, TimeUnit.SECONDS);
++      System.out.println("Blob stream created");
++      BlobController blobCtr = blob.getController().get(5, TimeUnit.SECONDS);
++      System.out.println("Blob controller created");
++
++      for (int i = 0; i < 10; i++) {
++        long latency = blobCtr.blob().join();
++        System.out.println("Blob round trip is " + latency);
++      }
++      blobStream.close().get(5, TimeUnit.SECONDS);
++      System.out.println("Blob stream closed");
++
++      Assertions.assertThrows(
++              ExecutionException.class, () -> blobCtr.blob().get(5, TimeUnit.SECONDS));
++    } catch (Exception e) {
++      throw new RuntimeException(e);
++    }
++  }
++
+   @Test
+   void addPingAfterHostStart() throws Exception {
+     String localListenAddress = "/ip4/127.0.0.1/tcp/40002";
+diff --git a/libp2p/src/test/kotlin/io/libp2p/protocol/Blob.kt b/libp2p/src/test/kotlin/io/libp2p/protocol/Blob.kt
+index a763ee60..b2ea7f59 100644
+--- a/libp2p/src/test/kotlin/io/libp2p/protocol/Blob.kt
++++ b/libp2p/src/test/kotlin/io/libp2p/protocol/Blob.kt
+@@ -34,7 +34,7 @@ open class BlobProtocol(var blobSize: Int) : ProtocolHandler<BlobController>(Lon
+     var timeoutScheduler by lazyVar { Executors.newSingleThreadScheduledExecutor() }
+     var curTime: () -> Long = { System.currentTimeMillis() }
+     var random = Random()
+-    var blobTimeout = Duration.ofSeconds(10)
++    var blobTimeout = Duration.ofSeconds(100)
+ 
+     override fun onStartInitiator(stream: Stream): CompletableFuture<BlobController> {
+         val handler = BlobInitiator()
