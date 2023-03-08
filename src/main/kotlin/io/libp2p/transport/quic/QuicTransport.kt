@@ -61,6 +61,13 @@ class QuicTransport(
             .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, connectTimeout.toMillis().toInt())
     }
 
+    companion object {
+        @JvmStatic
+        fun Ed25519(k: PrivKey): QuicTransport {
+            return QuicTransport(k, "Ed25519")
+        }
+    }
+
     private var server by lazyVar {
         ServerBootstrap().apply {
             group(bossGroup, workerGroup)
@@ -148,7 +155,8 @@ class QuicTransport(
             client.clone()
                 .remoteAddress(fromMultiaddr(addr))
                 .handler(channelHandler)
-                .connect().channel()
+                .connect()
+                .channel()
         )
             .streamOption(ChannelOption.ALLOCATOR, allocator)
             .option(ChannelOption.AUTO_READ, true)
