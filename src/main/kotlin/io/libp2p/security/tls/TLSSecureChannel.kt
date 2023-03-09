@@ -150,12 +150,12 @@ private class ChannelSetup(
         if (! activated) {
             activated = true
             val expectedRemotePeerId = ctx.channel().attr(REMOTE_PEER_ID).get()
-            ctx.channel().pipeline().addLast(
-                buildTlsHandler(
-                    localKey, Optional.ofNullable(expectedRemotePeerId),
-                    muxerIds, certAlgorithm, ch.isInitiator, handshakeComplete, ctx.alloc()
-                )
+            val handler = buildTlsHandler(
+                localKey, Optional.ofNullable(expectedRemotePeerId),
+                muxerIds, certAlgorithm, ch.isInitiator, handshakeComplete, ctx.alloc()
             )
+            ctx.channel().pipeline().addLast(handler)
+            handler.sslCloseFuture().addListener { _ -> ctx.close() }
             ctx.channel().pipeline().remove(SetupHandlerName)
             handshakeComplete.also { ctx.fireChannelActive() }
         }
@@ -190,7 +190,7 @@ class Libp2pTrustManager(private val expectedRemotePeer: Optional<PeerId>) : X50
     }
 
     override fun checkServerTrusted(certs: Array<out X509Certificate>?, authType: String?) {
-        return checkClientTrusted(certs, authType)
+        checkClientTrusted(certs, authType)
     }
 
     override fun getAcceptedIssuers(): Array<X509Certificate> {
