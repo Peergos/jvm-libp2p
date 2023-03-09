@@ -26,10 +26,7 @@ import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.nio.NioDatagramChannel
 import io.netty.channel.socket.nio.NioServerSocketChannel
 import io.netty.handler.ssl.ClientAuth
-import io.netty.incubator.codec.quic.QuicChannel
-import io.netty.incubator.codec.quic.QuicClientCodecBuilder
-import io.netty.incubator.codec.quic.QuicSslContext
-import io.netty.incubator.codec.quic.QuicSslContextBuilder
+import io.netty.incubator.codec.quic.*
 import java.net.*
 import java.time.Duration
 import java.util.*
@@ -115,7 +112,7 @@ class QuicTransport(
     override fun listen(addr: Multiaddr, connHandler: ConnectionHandler, preHandler: ChannelVisitor<P2PChannel>?): CompletableFuture<Unit> {
         if (closed) throw Libp2pException("Transport is closed")
 
-        val channelHandler = serverTransportBuilder(addr)
+        val channelHandler = serverTransportBuilder()
 
         val listener = server.clone()
             .childHandler(
@@ -250,8 +247,14 @@ class QuicTransport(
     }
 
     fun serverTransportBuilder(
-        addr: Multiaddr
-    ): ChannelHandler = TODO(addr.toString())
+    ): ChannelHandler {
+        val sslContext = quicSslContext(null)
+        return QuicServerCodecBuilder()
+            .sslEngineProvider({ q -> sslContext.newEngine(q.alloc()) })
+                .maxIdleTimeout(5000, TimeUnit.MILLISECONDS)
+            .sslTaskExecutor(workerGroup)
+            .build()
+    }
 
     fun udpPortFromMultiaddr(addr: Multiaddr) =
         addr.components.find { p -> p.protocol == UDP }
