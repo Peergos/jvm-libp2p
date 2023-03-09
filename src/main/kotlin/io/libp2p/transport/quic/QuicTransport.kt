@@ -18,6 +18,7 @@ import io.libp2p.security.tls.*
 import io.libp2p.transport.implementation.ConnectionOverNetty
 import io.netty.bootstrap.Bootstrap
 import io.netty.bootstrap.ServerBootstrap
+import io.netty.buffer.ByteBuf
 import io.netty.buffer.PooledByteBufAllocator
 import io.netty.channel.*
 import io.netty.channel.epoll.Epoll
@@ -246,13 +247,26 @@ class QuicTransport(
             .build()
     }
 
-    fun serverTransportBuilder(
-    ): ChannelHandler {
+    fun serverTransportBuilder(): ChannelHandler {
         val sslContext = quicSslContext(null)
         return QuicServerCodecBuilder()
             .sslEngineProvider({ q -> sslContext.newEngine(q.alloc()) })
                 .maxIdleTimeout(5000, TimeUnit.MILLISECONDS)
             .sslTaskExecutor(workerGroup)
+            .tokenHandler(object: QuicTokenHandler {
+                override fun writeToken(out: ByteBuf?, dcid: ByteBuf?, address: InetSocketAddress?): Boolean {
+                    TODO("Not yet implemented")
+                }
+
+                override fun validateToken(token: ByteBuf?, address: InetSocketAddress?): Int {
+                    TODO("Not yet implemented")
+                }
+
+                override fun maxTokenLength(): Int {
+                    return 32
+                }
+            })
+            .streamHandler(ChannelInboundHandlerAdapter())
             .build()
     }
 
