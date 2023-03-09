@@ -151,7 +151,7 @@ class QuicTransport(
         val sslContext = quicSslContext(addr.getPeerId())
         val handler = QuicClientCodecBuilder()
             .sslEngineProvider({ q -> sslContext.newEngine(q.alloc()) })
-                .maxIdleTimeout(5000, TimeUnit.MILLISECONDS)
+            .maxIdleTimeout(15000, TimeUnit.MILLISECONDS)
             .sslTaskExecutor(workerGroup)
             .build()
 
@@ -185,12 +185,14 @@ class QuicTransport(
             })
             val ids = sslContext.sessionContext().ids
             val peerCerts = sslContext.sessionContext().getSession(ids.nextElement()).peerCertificates
-            connection.setSecureSession(SecureChannel.Session(
-                PeerId.fromPubKey(localKey.publicKey()),
-                verifyAndExtractPeerId(peerCerts),
-                getPublicKeyFromCert(peerCerts),
-                "libp2p"
-            ))
+            connection.setSecureSession(
+                SecureChannel.Session(
+                    PeerId.fromPubKey(localKey.publicKey()),
+                    verifyAndExtractPeerId(peerCerts),
+                    getPublicKeyFromCert(peerCerts),
+                    "libp2p"
+                )
+            )
             res.complete(connection)
         }
         return res
@@ -237,11 +239,11 @@ class QuicTransport(
         val cert = buildCert(localKey, connectionKeys.first)
         println("Building " + certAlgorithm + " keys and cert")
         return (
-                if (isClient)
-                    QuicSslContextBuilder.forClient().keyManager(javaPrivateKey, null, cert)
-                else
-                    QuicSslContextBuilder.forServer(javaPrivateKey, null, cert).clientAuth(ClientAuth.REQUIRE)
-                )
+            if (isClient)
+                QuicSslContextBuilder.forClient().keyManager(javaPrivateKey, null, cert)
+            else
+                QuicSslContextBuilder.forServer(javaPrivateKey, null, cert).clientAuth(ClientAuth.REQUIRE)
+            )
             .trustManager(Libp2pTrustManager(Optional.ofNullable(expectedRemotePeerId)))
             .applicationProtocols("libp2p")
             .build()
@@ -251,9 +253,9 @@ class QuicTransport(
         val sslContext = quicSslContext(null)
         return QuicServerCodecBuilder()
             .sslEngineProvider({ q -> sslContext.newEngine(q.alloc()) })
-                .maxIdleTimeout(5000, TimeUnit.MILLISECONDS)
+            .maxIdleTimeout(5000, TimeUnit.MILLISECONDS)
             .sslTaskExecutor(workerGroup)
-            .tokenHandler(object: QuicTokenHandler {
+            .tokenHandler(object : QuicTokenHandler {
                 override fun writeToken(out: ByteBuf?, dcid: ByteBuf?, address: InetSocketAddress?): Boolean {
                     TODO("Not yet implemented")
                 }
