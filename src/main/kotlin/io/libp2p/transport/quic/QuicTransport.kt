@@ -157,16 +157,30 @@ class QuicTransport(
 
         val chanFuture = QuicChannel.newBootstrap(
             client.clone()
-                .remoteAddress(fromMultiaddr(addr))
                 .handler(handler)
-                .connect()
+                .localAddress(0)
+                .bind()
+                .sync()
                 .channel()
         )
             .streamOption(ChannelOption.ALLOCATOR, allocator)
             .option(ChannelOption.AUTO_READ, true)
             .option(ChannelOption.ALLOCATOR, allocator)
             .remoteAddress(fromMultiaddr(addr))
-            .streamHandler(ChannelInboundHandlerAdapter())
+//            .handler(connHandler)
+            .streamHandler(object : ChannelHandler {
+                override fun handlerAdded(ctx: ChannelHandlerContext?) {
+                    TODO("Not yet implemented")
+                }
+
+                override fun handlerRemoved(ctx: ChannelHandlerContext?) {
+                    TODO("Not yet implemented")
+                }
+
+                override fun exceptionCaught(ctx: ChannelHandlerContext?, cause: Throwable?) {
+                    TODO("Not yet implemented")
+                }
+            })
             .connect()
 
         val res = CompletableFuture<Connection>()
@@ -178,9 +192,15 @@ class QuicTransport(
                     TODO("No multistream yet")
 //                    var multistreamProtocol: MultistreamProtocol = MultistreamProtocolV1
 //                    var streamMultistreamProtocol: MultistreamProtocol by lazyVar { multistreamProtocol }
-//                    it.get().createStream(QuicStreamType.BIDIRECTIONAL, streamMultistreamProtocol.createMultistream(
-//                        protocols
-//                    ).toStreamHandler())
+//                    val multi = streamMultistreamProtocol.createMultistream(protocols)
+//                    multi.initChannel(connection)
+//                    val chanFuture = it.get().createStream(QuicStreamType.BIDIRECTIONAL, multi.toStreamHandler())
+//
+//                    val controller = CompletableFuture<T>()
+//                    val stream = newStream {
+//                        multi.toStreamHandler().handleStream(createStream(it)).forward(controller)
+//                    }.thenApply { it.attr(STREAM).get() }
+//                    return StreamPromise(stream, controller)
                 }
             })
             val ids = sslContext.sessionContext().ids
@@ -257,15 +277,15 @@ class QuicTransport(
             .sslTaskExecutor(workerGroup)
             .tokenHandler(object : QuicTokenHandler {
                 override fun writeToken(out: ByteBuf?, dcid: ByteBuf?, address: InetSocketAddress?): Boolean {
-                    TODO("Not yet implemented")
+                    return false
                 }
 
                 override fun validateToken(token: ByteBuf?, address: InetSocketAddress?): Int {
-                    TODO("Not yet implemented")
+                    return -1
                 }
 
                 override fun maxTokenLength(): Int {
-                    return 32
+                    return 0
                 }
             })
             .streamHandler(ChannelInboundHandlerAdapter())
