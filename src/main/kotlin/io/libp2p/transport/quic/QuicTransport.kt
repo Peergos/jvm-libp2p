@@ -213,6 +213,8 @@ class QuicTransport(
                     "libp2p"
                 )
             )
+            preHandler?.also { it.visit(connection) }
+            connHandler.handleConnection(connection)
             res.complete(connection)
         }
         return res
