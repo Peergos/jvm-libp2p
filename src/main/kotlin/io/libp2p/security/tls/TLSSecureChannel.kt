@@ -280,7 +280,8 @@ fun verifyAndExtractPeerId(chain: Array<Certificate>): PeerId {
     val pubKeyProto = (seq.getObjectAt(0) as DEROctetString).octets
     val signature = (seq.getObjectAt(1) as DEROctetString).octets
     val pubKey = unmarshalPublicKey(pubKeyProto)
-    if (! pubKey.verify(certificatePrefix.plus(cert.publicKey.encoded), signature))
+    val pubKeyAsn1 = bcCert.subjectPublicKeyInfo.encoded
+    if (! pubKey.verify(certificatePrefix.plus(pubKeyAsn1), signature))
         throw IllegalStateException("Invalid signature on TLS certificate extension!")
 
     cert.verify(cert.publicKey)
