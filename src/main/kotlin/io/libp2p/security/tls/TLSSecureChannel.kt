@@ -15,7 +15,6 @@ import io.libp2p.crypto.keys.generateEd25519KeyPair
 import io.libp2p.etc.REMOTE_PEER_ID
 import io.libp2p.security.InvalidRemotePubKey
 import io.netty.buffer.ByteBuf
-import io.netty.buffer.ByteBufAllocator
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.SimpleChannelInboundHandler
 import io.netty.handler.ssl.ApplicationProtocolConfig
@@ -88,7 +87,7 @@ fun buildTlsHandler(
     certAlgorithm: String,
     isInitiator: Boolean,
     handshakeComplete: CompletableFuture<SecureChannel.Session>,
-    alloc: ByteBufAllocator
+    ctx: ChannelHandlerContext
 ): SslHandler {
     val connectionKeys = if (certAlgorithm.equals("ECDSA")) generateEcdsaKeyPair() else generateEd25519KeyPair()
     val javaPrivateKey = getJavaKey(connectionKeys.first)
@@ -111,8 +110,7 @@ fun buildTlsHandler(
             )
         )
         .build()
-    val handler = sslContext.newHandler(alloc)
-//    handler.sslCloseFuture().addListener { _ -> ctx.close() }
+    val handler = sslContext.newHandler(ctx.alloc())
     val handshake = handler.handshakeFuture()
     val engine = handler.engine()
     handshake.addListener { fut ->
@@ -132,6 +130,7 @@ fun buildTlsHandler(
                     selectedProtocol
                 )
             )
+            ctx.fireChannelActive()
         }
     }
     return handler
@@ -152,12 +151,11 @@ private class ChannelSetup(
             val expectedRemotePeerId = ctx.channel().attr(REMOTE_PEER_ID).get()
             val handler = buildTlsHandler(
                 localKey, Optional.ofNullable(expectedRemotePeerId),
-                muxerIds, certAlgorithm, ch.isInitiator, handshakeComplete, ctx.alloc()
+                muxerIds, certAlgorithm, ch.isInitiator, handshakeComplete, ctx
             )
             ctx.channel().pipeline().addLast(handler)
             handler.sslCloseFuture().addListener { _ -> ctx.close() }
             ctx.channel().pipeline().remove(SetupHandlerName)
-            handshakeComplete.also { ctx.fireChannelActive() }
         }
     }
 
