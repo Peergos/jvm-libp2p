@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit
 class HostFactory {
 
     var keyType = KEY_TYPE.ECDSA
-    var tcpPort = 5000
+    var tcpPort = 6000
     var transportCtor = ::TcpTransport
     var secureCtor = ::NoiseXXSecureChannel
     var mplexCtor = ::MplexStreamMuxer
