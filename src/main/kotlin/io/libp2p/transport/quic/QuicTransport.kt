@@ -17,7 +17,6 @@ import io.libp2p.etc.util.netty.nettyInitializer
 import io.libp2p.security.tls.*
 import io.libp2p.transport.implementation.ConnectionOverNetty
 import io.netty.bootstrap.Bootstrap
-import io.netty.bootstrap.ServerBootstrap
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.PooledByteBufAllocator
 import io.netty.channel.*
@@ -25,7 +24,6 @@ import io.netty.channel.epoll.Epoll
 import io.netty.channel.epoll.EpollDatagramChannel
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.nio.NioDatagramChannel
-import io.netty.channel.socket.nio.NioServerSocketChannel
 import io.netty.handler.ssl.ClientAuth
 import io.netty.incubator.codec.quic.*
 import java.net.*
@@ -69,10 +67,14 @@ class QuicTransport(
     }
 
     private var server by lazyVar {
-        ServerBootstrap().apply {
-            group(bossGroup, workerGroup)
-            channel(NioServerSocketChannel::class.java)
-        }
+        Bootstrap().group(workerGroup)
+            .channel(
+                if (Epoll.isAvailable()) {
+                    EpollDatagramChannel::class.java
+                } else {
+                    NioDatagramChannel::class.java
+                }
+            )
     }
 
     override val activeListeners: Int
@@ -115,16 +117,19 @@ class QuicTransport(
 
         val channelHandler = serverTransportBuilder()
 
-        val listener = server.clone()
-            .childHandler(
+        val bindComplete = server.clone()
+            .handler(
                 nettyInitializer { init ->
                     registerChannel(init.channel)
                     init.addLastLocal(channelHandler)
                 }
             )
+            .localAddress(fromMultiaddr(addr))
+            .handler(channelHandler)
+            .bind()
+            .sync()
 
-        val bindComplete = listener.bind(fromMultiaddr(addr))
-
+        val res = CompletableFuture<Unit>()
         bindComplete.also {
             synchronized(this@QuicTransport) {
                 listeners += addr to it.channel()
@@ -133,10 +138,12 @@ class QuicTransport(
                         listeners -= addr
                     }
                 }
+                println("Quic server listening on " + addr)
+                res.complete(null)
             }
         }
 
-        return bindComplete.toVoidCompletableFuture()
+        return res
     }
 
     override fun unlisten(addr: Multiaddr): CompletableFuture<Unit> {
