@@ -39,7 +39,7 @@ dependencies {
     api("io.netty:netty-buffer:4.1.88.Final")
     api("io.netty:netty-codec-http2:4.1.88.Final")
     api("io.netty:netty-transport:4.1.88.Final")
-    api("io.netty.incubator:netty-incubator-codec-native-quic:0.0.37.Final:linux-x86_64")
+    api("io.netty.incubator:netty-incubator-codec-native-quic:0.0.38.Final:linux-x86_64")
     api("io.netty:netty-transport-classes-epoll:4.1.88.Final")
     api("com.google.protobuf:protobuf-java:3.21.9")
 
