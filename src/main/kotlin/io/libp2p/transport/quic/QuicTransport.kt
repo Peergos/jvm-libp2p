@@ -64,6 +64,11 @@ class QuicTransport(
         fun Ed25519(k: PrivKey): QuicTransport {
             return QuicTransport(k, "Ed25519")
         }
+
+        @JvmStatic
+        fun Ecdsa(k: PrivKey): QuicTransport {
+            return QuicTransport(k, "ECDSA")
+        }
     }
 
     private var server by lazyVar {
@@ -266,7 +271,7 @@ class QuicTransport(
         val javaPrivateKey = getJavaKey(connectionKeys.first)
         val isClient = expectedRemotePeerId != null
         val cert = buildCert(localKey, connectionKeys.first)
-        println("Building " + certAlgorithm + " keys and cert")
+        println("Building " + certAlgorithm + " keys and cert for peerid " + PeerId.fromPubKey(localKey.publicKey()))
         return (
             if (isClient)
                 QuicSslContextBuilder.forClient().keyManager(javaPrivateKey, null, cert)

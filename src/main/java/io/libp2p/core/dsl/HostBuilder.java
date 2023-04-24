@@ -78,6 +78,8 @@ public class HostBuilder {
             b -> {
                 IdentityBuilder identity = b.getIdentity();
                 identity.random(KEY_TYPE.ED25519);
+                PrivKey peerId = identity.getFactory().invoke();
+                identity.setFactory(() -> peerId);
 
                 secureTransports_.forEach(t ->
                         b.getTransports().add(c ->

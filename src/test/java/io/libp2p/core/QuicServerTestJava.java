@@ -17,11 +17,11 @@ public class QuicServerTestJava {
         String localListenAddress = "/ip4/127.0.0.1/udp/40002/quic";
 
         Host clientHost = new HostBuilder()
-                .secureTransport(QuicTransport::Ed25519)
+                .secureTransport(QuicTransport::Ecdsa)
                 .build();
 
         Host serverHost = new HostBuilder()
-                .secureTransport(QuicTransport::Ed25519)
+                .secureTransport(QuicTransport::Ecdsa)
                 .protocol(new Ping())
                 .listen(localListenAddress)
                 .build();
@@ -29,9 +29,9 @@ public class QuicServerTestJava {
         CompletableFuture<Void> clientStarted = clientHost.start();
         CompletableFuture<Void> serverStarted = serverHost.start();
         clientStarted.get(5, TimeUnit.SECONDS);
-        System.out.println("Client started");
+        System.out.println("Client started " + clientHost.getPeerId());
         serverStarted.get(5, TimeUnit.SECONDS);
-        System.out.println("Server started");
+        System.out.println("Server started " + serverHost.getPeerId());
 
         Assertions.assertEquals(0, clientHost.listenAddresses().size());
         Assertions.assertEquals(1, serverHost.listenAddresses().size());
