@@ -2,8 +2,10 @@ package io.libp2p.transport.quic
 
 import io.libp2p.core.*
 import io.libp2p.core.crypto.PrivKey
+import io.libp2p.core.crypto.unmarshalPublicKey
 import io.libp2p.core.multiformats.Multiaddr
 import io.libp2p.core.multiformats.MultiaddrDns
+import io.libp2p.core.multiformats.Multihash
 import io.libp2p.core.multiformats.Protocol.*
 import io.libp2p.core.multistream.ProtocolBinding
 import io.libp2p.core.mux.StreamMuxer
@@ -12,6 +14,8 @@ import io.libp2p.core.transport.Transport
 import io.libp2p.crypto.keys.generateEcdsaKeyPair
 import io.libp2p.crypto.keys.generateEd25519KeyPair
 import io.libp2p.etc.types.lazyVar
+import io.libp2p.etc.types.toByteArray
+import io.libp2p.etc.types.toByteBuf
 import io.libp2p.etc.types.toVoidCompletableFuture
 import io.libp2p.etc.util.netty.nettyInitializer
 import io.libp2p.security.tls.*
@@ -19,6 +23,7 @@ import io.libp2p.transport.implementation.ConnectionOverNetty
 import io.netty.bootstrap.Bootstrap
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.PooledByteBufAllocator
+import io.netty.buffer.UnpooledByteBufAllocator
 import io.netty.channel.*
 import io.netty.channel.epoll.Epoll
 import io.netty.channel.epoll.EpollDatagramChannel
@@ -216,12 +221,16 @@ class QuicTransport(
                 }
             })
             val ids = sslContext.sessionContext().ids
-            val peerCerts = sslContext.sessionContext().getSession(ids.nextElement()).peerCertificates
+            val pubHash = Multihash.of(addr.getPeerId()!!.bytes.toByteBuf())
+            val remotePubKey = if (pubHash.desc.digest == Multihash.Digest.Identity)
+                unmarshalPublicKey(pubHash.bytes.toByteArray())
+            else
+                getPublicKeyFromCert(sslContext.sessionContext().getSession(ids.nextElement()).peerCertificates)
             connection.setSecureSession(
                 SecureChannel.Session(
                     PeerId.fromPubKey(localKey.publicKey()),
-                    verifyAndExtractPeerId(peerCerts),
-                    getPublicKeyFromCert(peerCerts),
+                    addr.getPeerId()!!,
+                    remotePubKey,
                     "libp2p"
                 )
             )
