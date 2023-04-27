@@ -7,23 +7,23 @@ import io.libp2p.core.multiformats.Multiaddr
 import io.libp2p.core.multiformats.MultiaddrDns
 import io.libp2p.core.multiformats.Multihash
 import io.libp2p.core.multiformats.Protocol.*
+import io.libp2p.core.multistream.MultistreamProtocol
+import io.libp2p.core.multistream.MultistreamProtocolV1
 import io.libp2p.core.multistream.ProtocolBinding
 import io.libp2p.core.mux.StreamMuxer
 import io.libp2p.core.security.SecureChannel
 import io.libp2p.core.transport.Transport
 import io.libp2p.crypto.keys.generateEcdsaKeyPair
 import io.libp2p.crypto.keys.generateEd25519KeyPair
-import io.libp2p.etc.types.lazyVar
-import io.libp2p.etc.types.toByteArray
-import io.libp2p.etc.types.toByteBuf
-import io.libp2p.etc.types.toVoidCompletableFuture
+import io.libp2p.etc.STREAM
+import io.libp2p.etc.types.*
 import io.libp2p.etc.util.netty.nettyInitializer
 import io.libp2p.security.tls.*
 import io.libp2p.transport.implementation.ConnectionOverNetty
+import io.libp2p.transport.implementation.StreamOverNetty
 import io.netty.bootstrap.Bootstrap
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.PooledByteBufAllocator
-import io.netty.buffer.UnpooledByteBufAllocator
 import io.netty.channel.*
 import io.netty.channel.epoll.Epoll
 import io.netty.channel.epoll.EpollDatagramChannel
@@ -161,6 +161,12 @@ class QuicTransport(
             ?: throw Libp2pException("No listeners on address $addr")
     }
 
+    private fun createStream(channel: QuicStreamChannel, connection: Connection): Stream {
+        val stream = StreamOverNetty(channel, connection, channel.isLocalCreated)
+        channel.attr(STREAM).set(stream)
+        return stream
+    }
+
     override fun dial(addr: Multiaddr, connHandler: ConnectionHandler, preHandler: ChannelVisitor<P2PChannel>?):
         CompletableFuture<Connection> {
         if (closed) throw Libp2pException("Transport is closed")
@@ -206,18 +212,18 @@ class QuicTransport(
             val connection = ConnectionOverNetty(it.get(), this, true)
             connection.setMuxerSession(object : StreamMuxer.Session {
                 override fun <T> createStream(protocols: List<ProtocolBinding<T>>): StreamPromise<T> {
-                    TODO("No multistream yet")
-//                    var multistreamProtocol: MultistreamProtocol = MultistreamProtocolV1
-//                    var streamMultistreamProtocol: MultistreamProtocol by lazyVar { multistreamProtocol }
-//                    val multi = streamMultistreamProtocol.createMultistream(protocols)
-//                    multi.initChannel(connection)
-//                    val chanFuture = it.get().createStream(QuicStreamType.BIDIRECTIONAL, multi.toStreamHandler())
-//
-//                    val controller = CompletableFuture<T>()
-//                    val stream = newStream {
-//                        multi.toStreamHandler().handleStream(createStream(it)).forward(controller)
-//                    }.thenApply { it.attr(STREAM).get() }
-//                    return StreamPromise(stream, controller)
+                    var multistreamProtocol: MultistreamProtocol = MultistreamProtocolV1
+                    var streamMultistreamProtocol: MultistreamProtocol by lazyVar { multistreamProtocol }
+                    val multi = streamMultistreamProtocol.createMultistream(protocols)
+                    multi.initChannel(connection)
+                    val chanFut = it.get().createStream(QuicStreamType.BIDIRECTIONAL, null)
+                    val controller = CompletableFuture<T>()
+                    val streamFut = CompletableFuture<Stream>()
+                    chanFut.apply {
+                        val stream = createStream(chanFut.get(), connection)
+                        multi.toStreamHandler().handleStream(stream).forward(controller).apply { streamFut.complete(stream)}
+                    }
+                    return StreamPromise(streamFut, controller)
                 }
             })
             val ids = sslContext.sessionContext().ids
@@ -296,6 +302,7 @@ class QuicTransport(
         val sslContext = quicSslContext(null)
         return QuicServerCodecBuilder()
             .sslEngineProvider({ q -> sslContext.newEngine(q.alloc()) })
+            .initialMaxStreamsBidirectional(10)
             .maxIdleTimeout(5000, TimeUnit.MILLISECONDS)
             .sslTaskExecutor(workerGroup)
             .tokenHandler(object : QuicTokenHandler {
