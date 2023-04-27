@@ -215,13 +215,14 @@ class QuicTransport(
                     var multistreamProtocol: MultistreamProtocol = MultistreamProtocolV1
                     var streamMultistreamProtocol: MultistreamProtocol by lazyVar { multistreamProtocol }
                     val multi = streamMultistreamProtocol.createMultistream(protocols)
-                    multi.initChannel(connection)
+
                     val chanFut = it.get().createStream(QuicStreamType.BIDIRECTIONAL, null)
                     val controller = CompletableFuture<T>()
                     val streamFut = CompletableFuture<Stream>()
                     chanFut.apply {
                         val stream = createStream(chanFut.get(), connection)
-                        multi.toStreamHandler().handleStream(stream).forward(controller).apply { streamFut.complete(stream)}
+                        multi.initChannel(stream)
+                        multi.toStreamHandler().handleStream(stream).forward(controller).apply { streamFut.complete(stream) }
                     }
                     return StreamPromise(streamFut, controller)
                 }
