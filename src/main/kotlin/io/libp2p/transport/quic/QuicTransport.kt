@@ -171,7 +171,8 @@ class QuicTransport(
         CompletableFuture<Connection> {
         if (closed) throw Libp2pException("Transport is closed")
 
-        val sslContext = quicSslContext(addr.getPeerId())
+        val trust = Libp2pTrustManager(Optional.ofNullable(addr.getPeerId()))
+        val sslContext = quicSslContext(addr.getPeerId(), trust)
         val handler = QuicClientCodecBuilder()
             .sslEngineProvider({ q -> sslContext.newEngine(q.alloc()) })
             .maxIdleTimeout(15000, TimeUnit.MILLISECONDS)
@@ -227,12 +228,11 @@ class QuicTransport(
                     return StreamPromise(streamFut, controller)
                 }
             })
-            val ids = sslContext.sessionContext().ids
             val pubHash = Multihash.of(addr.getPeerId()!!.bytes.toByteBuf())
             val remotePubKey = if (pubHash.desc.digest == Multihash.Digest.Identity)
                 unmarshalPublicKey(pubHash.bytes.toByteArray())
             else
-                getPublicKeyFromCert(sslContext.sessionContext().getSession(ids.nextElement()).peerCertificates)
+                getPublicKeyFromCert(arrayOf(trust.remoteCert!!))
             connection.setSecureSession(
                 SecureChannel.Session(
                     PeerId.fromPubKey(localKey.publicKey()),
@@ -282,7 +282,7 @@ class QuicTransport(
             addr.has(QUIC) &&
             !addr.has(WS)
 
-    fun quicSslContext(expectedRemotePeerId: PeerId?): QuicSslContext {
+    fun quicSslContext(expectedRemotePeerId: PeerId?, trustManager: Libp2pTrustManager): QuicSslContext {
         val connectionKeys = if (certAlgorithm.equals("ECDSA")) generateEcdsaKeyPair() else generateEd25519KeyPair()
         val javaPrivateKey = getJavaKey(connectionKeys.first)
         val isClient = expectedRemotePeerId != null
@@ -294,13 +294,13 @@ class QuicTransport(
             else
                 QuicSslContextBuilder.forServer(javaPrivateKey, null, cert).clientAuth(ClientAuth.REQUIRE)
             )
-            .trustManager(Libp2pTrustManager(Optional.ofNullable(expectedRemotePeerId)))
+            .trustManager(trustManager)
             .applicationProtocols("libp2p")
             .build()
     }
 
     fun serverTransportBuilder(): ChannelHandler {
-        val sslContext = quicSslContext(null)
+        val sslContext = quicSslContext(null, Libp2pTrustManager(Optional.empty()))
         return QuicServerCodecBuilder()
             .sslEngineProvider({ q -> sslContext.newEngine(q.alloc()) })
             .initialMaxStreamsBidirectional(10)

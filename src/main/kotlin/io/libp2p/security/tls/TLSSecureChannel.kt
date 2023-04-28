@@ -179,10 +179,17 @@ private class ChannelSetup(
 }
 
 class Libp2pTrustManager(private val expectedRemotePeer: Optional<PeerId>) : X509TrustManager {
+    var remoteCert: Certificate?
+
+    init {
+        remoteCert = null
+    }
     override fun checkClientTrusted(certs: Array<out X509Certificate>?, authType: String?) {
         if (certs?.size != 1)
             throw CertificateException()
-        val claimedPeerId = verifyAndExtractPeerId(arrayOf(certs.get(0)))
+        val cert = certs.get(0)
+        remoteCert = cert
+        val claimedPeerId = verifyAndExtractPeerId(arrayOf(cert))
         if (expectedRemotePeer.map { ex -> ! ex.equals(claimedPeerId) }.orElse(false))
             throw InvalidRemotePubKey()
         println("Trusted!")
