@@ -3,8 +3,11 @@ package io.libp2p.core;
 import io.libp2p.core.crypto.*;
 import io.libp2p.core.dsl.*;
 import io.libp2p.core.multiformats.*;
+import io.libp2p.core.mux.*;
 import io.libp2p.protocol.*;
+import io.libp2p.security.tls.*;
 import io.libp2p.transport.quic.*;
+import io.libp2p.transport.tcp.*;
 import kotlin.*;
 import org.junit.jupiter.api.*;
 
@@ -15,12 +18,19 @@ public class QuicServerTestJava {
     @Disabled
     void ping() throws Exception {
         String localListenAddress = "/ip4/127.0.0.1/udp/40002/quic";
+//        String localListenAddress = "/ip4/127.0.0.1/tcp/40002";
 
         Host clientHost = new HostBuilder()
+                .transport(TcpTransport::new)
+                .secureChannel(TlsSecureChannel::new)
+                .muxer(StreamMuxerProtocol::getYamux)
                 .secureTransport(QuicTransport::Ecdsa)
                 .build();
 
         Host serverHost = new HostBuilder()
+                .transport(TcpTransport::new)
+                .secureChannel(TlsSecureChannel::new)
+                .muxer(StreamMuxerProtocol::getYamux)
                 .secureTransport(QuicTransport::Ecdsa)
                 .protocol(new Ping())
                 .listen(localListenAddress)
@@ -39,6 +49,8 @@ public class QuicServerTestJava {
                 localListenAddress + "/p2p/" + serverHost.getPeerId(),
                 serverHost.listenAddresses().get(0).toString()
         );
+        System.out.println("Hosts running");
+        Thread.sleep(2_000);
 
         StreamPromise<PingController> ping =
                 clientHost.getNetwork().connect(
@@ -47,11 +59,12 @@ public class QuicServerTestJava {
                 ).thenApply(
                         it -> it.muxerSession().createStream(new Ping())
                 )
-                .get(5, TimeUnit.SECONDS);
+                .get(5000, TimeUnit.SECONDS);
 
         Stream pingStream = ping.getStream().get(5, TimeUnit.SECONDS);
         System.out.println("Ping stream created");
-        PingController pingCtr = ping.getController().get(5, TimeUnit.SECONDS);
+        CompletableFuture<PingController> controller = ping.getController();
+        PingController pingCtr = controller.get(5000, TimeUnit.SECONDS);
         System.out.println("Ping controller created");
 
         for (int i = 0; i < 10; i++) {

@@ -15,6 +15,7 @@ import io.libp2p.core.security.SecureChannel
 import io.libp2p.core.transport.Transport
 import io.libp2p.crypto.keys.generateEcdsaKeyPair
 import io.libp2p.crypto.keys.generateEd25519KeyPair
+import io.libp2p.etc.CONNECTION
 import io.libp2p.etc.STREAM
 import io.libp2p.etc.types.*
 import io.libp2p.etc.util.netty.nettyInitializer
@@ -40,6 +41,7 @@ import java.util.concurrent.TimeUnit
 class QuicTransport(
     private val localKey: PrivKey,
     private val certAlgorithm: String,
+    private val protocols: List<ProtocolBinding<*>>
 ) : Transport {
 
     private var closed = false
@@ -51,6 +53,8 @@ class QuicTransport(
     private var workerGroup by lazyVar { NioEventLoopGroup() }
     private var bossGroup by lazyVar { NioEventLoopGroup(1) }
     private var allocator by lazyVar { PooledByteBufAllocator(true) }
+    private var multistreamProtocol: MultistreamProtocol = MultistreamProtocolV1
+    private var incomingMultistreamProtocol: MultistreamProtocol by lazyVar { multistreamProtocol }
 
     private var client by lazyVar {
         Bootstrap().group(workerGroup)
@@ -66,13 +70,13 @@ class QuicTransport(
 
     companion object {
         @JvmStatic
-        fun Ed25519(k: PrivKey): QuicTransport {
-            return QuicTransport(k, "Ed25519")
+        fun Ed25519(k: PrivKey, p: List<ProtocolBinding<*>>): QuicTransport {
+            return QuicTransport(k, "Ed25519", p)
         }
 
         @JvmStatic
-        fun Ecdsa(k: PrivKey): QuicTransport {
-            return QuicTransport(k, "ECDSA")
+        fun Ecdsa(k: PrivKey, p: List<ProtocolBinding<*>>): QuicTransport {
+            return QuicTransport(k, "ECDSA", p)
         }
     }
 
@@ -125,7 +129,7 @@ class QuicTransport(
     override fun listen(addr: Multiaddr, connHandler: ConnectionHandler, preHandler: ChannelVisitor<P2PChannel>?): CompletableFuture<Unit> {
         if (closed) throw Libp2pException("Transport is closed")
 
-        val channelHandler = serverTransportBuilder()
+        val channelHandler = serverTransportBuilder(connHandler, preHandler)
 
         val bindComplete = server.clone()
             .handler(
@@ -135,7 +139,6 @@ class QuicTransport(
                 }
             )
             .localAddress(fromMultiaddr(addr))
-            .handler(channelHandler)
             .bind()
             .sync()
 
@@ -161,8 +164,8 @@ class QuicTransport(
             ?: throw Libp2pException("No listeners on address $addr")
     }
 
-    private fun createStream(channel: QuicStreamChannel, connection: Connection): Stream {
-        val stream = StreamOverNetty(channel, connection, channel.isLocalCreated)
+    private fun createStream(channel: Channel, connection: Connection): Stream {
+        val stream = StreamOverNetty(channel, connection, true)
         channel.attr(STREAM).set(stream)
         return stream
     }
@@ -217,13 +220,28 @@ class QuicTransport(
                     var streamMultistreamProtocol: MultistreamProtocol by lazyVar { multistreamProtocol }
                     val multi = streamMultistreamProtocol.createMultistream(protocols)
 
-                    val chanFut = it.get().createStream(QuicStreamType.BIDIRECTIONAL, null)
                     val controller = CompletableFuture<T>()
                     val streamFut = CompletableFuture<Stream>()
+                    val chanFut = it.get().createStream(QuicStreamType.BIDIRECTIONAL, object : ChannelHandler {
+                        override fun handlerAdded(ctx: ChannelHandlerContext?) {
+                            val stream = createStream(ctx!!.channel(), connection)
+                            multi.toStreamHandler().handleStream(stream).forward(controller).apply { streamFut.complete(stream) }
+                            ctx.pipeline().addLast()
+                        }
+
+                        override fun handlerRemoved(ctx: ChannelHandlerContext?) {
+                            TODO("Not yet implemented handler removal")
+                        }
+
+                        override fun exceptionCaught(ctx: ChannelHandlerContext?, cause: Throwable?) {
+                            TODO("Not yet implemented exception caught")
+                        }
+                    })
                     chanFut.apply {
                         val stream = createStream(chanFut.get(), connection)
-                        multi.initChannel(stream)
+//                        multi.initChannel(stream).forward(controller).apply { streamFut.complete(stream) }
                         multi.toStreamHandler().handleStream(stream).forward(controller).apply { streamFut.complete(stream) }
+
                     }
                     return StreamPromise(streamFut, controller)
                 }
@@ -299,28 +317,74 @@ class QuicTransport(
             .build()
     }
 
-    fun serverTransportBuilder(): ChannelHandler {
+    fun serverTransportBuilder(connHandler: ConnectionHandler, preHandler: ChannelVisitor<P2PChannel>?): ChannelHandler {
         val sslContext = quicSslContext(null, Libp2pTrustManager(Optional.empty()))
         return QuicServerCodecBuilder()
             .sslEngineProvider({ q -> sslContext.newEngine(q.alloc()) })
             .initialMaxStreamsBidirectional(10)
             .maxIdleTimeout(5000, TimeUnit.MILLISECONDS)
             .sslTaskExecutor(workerGroup)
-            .tokenHandler(object : QuicTokenHandler {
-                override fun writeToken(out: ByteBuf?, dcid: ByteBuf?, address: InetSocketAddress?): Boolean {
-                    return false
+            .tokenHandler(NoTokenHandler())
+            .handler(object : ChannelInboundHandlerAdapter() {
+                override fun channelRegistered(ctx: ChannelHandlerContext?) {
+                    super.channelRegistered(ctx)
+                    println("chan registered")
+                    if (ctx != null) {
+                        val connection = ConnectionOverNetty(ctx.channel(), this@QuicTransport, false)
+//                        preHandler?.also { it.visit(connection) }
+//                        connHandler.handleConnection(connection)
+//                        incomingMultistreamProtocol.createMultistream(protocols).initChannel(connection)
+
+//                        val connection = ctx.channel().attr(CONNECTION).get()
+                        val stream = StreamOverNetty(ctx.channel(), connection, false)
+                        ctx.channel().attr(STREAM).set(stream)
+                        preHandler?.also { it.visit(connection) }
+                        connHandler.handleConnection(connection)
+                        val handler = incomingMultistreamProtocol.createMultistream(protocols).toStreamHandler()
+                        handler.handleStream(stream)
+                    }
                 }
 
-                override fun validateToken(token: ByteBuf?, address: InetSocketAddress?): Int {
-                    return -1
+                override fun channelActive(ctx: ChannelHandlerContext) {
+                    super.channelActive(ctx)
+                    println("chan active")
                 }
 
-                override fun maxTokenLength(): Int {
-                    return 0
+                override fun channelRead(ctx: ChannelHandlerContext, msg: Any) {
+                    super.channelRead(ctx, msg)
+                    println("chan read " + msg)
                 }
             })
-            .streamHandler(ChannelInboundHandlerAdapter())
+            .streamHandler(object : ChannelHandler {
+                        override fun handlerAdded(ctx: ChannelHandlerContext?) {
+                            println("Quic server side stream handler added")
+                            val connection = ctx!!.channel().attr(CONNECTION).get()
+                            connHandler.handleConnection(connection)
+                        }
+
+                        override fun handlerRemoved(ctx: ChannelHandlerContext?) {
+                            TODO("Not yet implemented handler removal")
+                        }
+
+                        override fun exceptionCaught(ctx: ChannelHandlerContext?, cause: Throwable?) {
+                            TODO("Not yet implemented exception caught")
+                        }
+                    })
             .build()
+    }
+
+    class NoTokenHandler(): QuicTokenHandler {
+        override fun writeToken(out: ByteBuf?, dcid: ByteBuf?, address: InetSocketAddress?): Boolean {
+            return false
+        }
+
+        override fun validateToken(token: ByteBuf?, address: InetSocketAddress?): Int {
+            return -1
+        }
+
+        override fun maxTokenLength(): Int {
+            return 0
+        }
     }
 
     fun udpPortFromMultiaddr(addr: Multiaddr) =

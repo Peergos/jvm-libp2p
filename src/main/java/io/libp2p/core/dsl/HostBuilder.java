@@ -40,7 +40,7 @@ public class HostBuilder {
 
     @SafeVarargs
     public final HostBuilder secureTransport(
-            Function<PrivKey, Transport>... transports) {
+            BiFunction<PrivKey, List<ProtocolBinding<?>>, Transport>... transports) {
         secureTransports_.addAll(Arrays.asList(transports));
         return this;
     }
@@ -83,7 +83,7 @@ public class HostBuilder {
 
                 secureTransports_.forEach(t ->
                         b.getTransports().add(c ->
-                                t.apply(identity.getFactory().invoke()))
+                                t.apply(identity.getFactory().invoke(), protocols_))
                 );
                 transports_.forEach(t ->
                     b.getTransports().add(t::apply)
@@ -103,7 +103,7 @@ public class HostBuilder {
     } // build
 
     private DefaultMode defaultMode_;
-    private List<Function<PrivKey, Transport>> secureTransports_ = new ArrayList<>();
+    private List<BiFunction<PrivKey, List<ProtocolBinding<?>>, Transport>> secureTransports_ = new ArrayList<>();
 
     private List<Function<ConnectionUpgrader, Transport>> transports_ = new ArrayList<>();
     private List<BiFunction<PrivKey, List<String>, SecureChannel>> secureChannels_ = new ArrayList<>();

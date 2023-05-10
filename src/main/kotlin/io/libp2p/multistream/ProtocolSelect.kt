@@ -32,6 +32,7 @@ class ProtocolSelect<TController>(val protocols: List<ProtocolBinding<TControlle
         // See https://github.com/libp2p/jvm-libp2p/issues/94
         activeFired = true
         ctx.fireChannelActive()
+        println(msg)
         ctx.fireChannelRead(msg)
     }
 

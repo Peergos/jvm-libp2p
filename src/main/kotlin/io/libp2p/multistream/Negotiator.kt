@@ -87,12 +87,14 @@ object Negotiator {
         var headerRead = false
 
         override fun channelActive(ctx: ChannelHandlerContext) {
+            println("Negotiator active: " + MULTISTREAM_PROTO)
             ctx.write(MULTISTREAM_PROTO)
             initialProtocolAnnounce?.also { ctx.write(it) }
             ctx.flush()
         }
 
         override fun channelRead0(ctx: ChannelHandlerContext, msg: String) {
+            println("Negotiatior read: " + msg)
             if (msg == MULTISTREAM_PROTO) {
                 if (!headerRead) headerRead = true else
                     throw ProtocolNegotiationException("Received multistream header more than once")
