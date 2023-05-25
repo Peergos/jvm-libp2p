@@ -40,6 +40,7 @@ dependencyManagement {
         dependencySet(group: "org.bouncycastle", version: "1.70") {
             entry 'bcprov-jdk15on'
             entry 'bcpkix-jdk15on'
+            entry 'bctls-jdk15on'
         }
     }
 }
