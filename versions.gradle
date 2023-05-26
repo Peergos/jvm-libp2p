@@ -27,7 +27,7 @@ dependencyManagement {
             entry 'protobuf-java'
             entry 'protoc'
         }
-        dependencySet(group: "io.netty", version: "4.1.87.Final") {
+        dependencySet(group: "io.netty", version: "4.1.90.Final") {
             entry 'netty-common'
             entry 'netty-handler'
             entry 'netty-transport'

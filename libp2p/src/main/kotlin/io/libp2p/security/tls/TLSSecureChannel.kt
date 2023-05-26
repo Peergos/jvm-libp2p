@@ -91,7 +91,6 @@ fun buildTlsHandler(
     ctx: ChannelHandlerContext
 ): SslHandler {
     val connectionKeys = if (certAlgorithm.equals("ECDSA")) generateEcdsaKeyPair() else generateEd25519KeyPair()
-    println(certAlgorithm)
     val javaPrivateKey = getJavaKey(connectionKeys.first)
     val sslContext = (
         if (ch.isInitiator)
@@ -109,8 +108,7 @@ fun buildTlsHandler(
                 ApplicationProtocolConfig.Protocol.ALPN,
                 ApplicationProtocolConfig.SelectorFailureBehavior.FATAL_ALERT,
                 ApplicationProtocolConfig.SelectedListenerFailureBehavior.FATAL_ALERT,
-                listOf("libp2p")
-//                muxerIds.plus("libp2p") // early muxer negotiation
+                muxerIds.plus("libp2p") // early muxer negotiation
             )
         )
         .build()
