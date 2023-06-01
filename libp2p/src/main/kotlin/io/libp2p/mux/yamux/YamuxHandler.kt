@@ -86,9 +86,9 @@ open class YamuxHandler(
     }
 
     fun handleDataRead(msg: YamuxFrame) {
-        println("yamux:handleDataRead[ " + msg.id)
         val ctx = getChannelHandlerContext()
         val size = msg.lenData
+        println("yamux:handleDataRead[ " + msg.id + " size: " + size)
         handleFlags(msg)
         if (size.toInt() == 0)
             return
@@ -110,13 +110,13 @@ open class YamuxHandler(
     }
 
     fun handleWindowUpdate(msg: YamuxFrame) {
-        println("yamux:handleWindowUpdate " + msg.id)
+        println("yamux:handleWindowUpdate[ " + msg.id)
         handleFlags(msg)
         val size = msg.lenData.toInt()
         val sendWindow = sendWindows.get(msg.id)
         if (sendWindow == null) {
-            println("yamux:handleWindowUpdate - null sendWindow" + msg.id)
-            throw Libp2pException("No send window for " + msg.id)
+            println("yamux:handleWindowUpdate - null sendWindow" + msg.id + " size: " + size)
+            return
         }
         sendWindow.addAndGet(size)
         println("yamux:handleWindowUpdate " + msg.id + " size: " + size)
