@@ -109,8 +109,10 @@ open class YamuxHandler(
         handleFlags(msg)
         val size = msg.lenData.toInt()
         val sendWindow = sendWindows.get(msg.id)
-        if (sendWindow == null)
+        if (sendWindow == null) {
+            println("yamux:handleWindowUpdate - null sendWindow")
             throw Libp2pException("No send window for " + msg.id)
+        }
         sendWindow.addAndGet(size)
         val buffer = sendBuffers.get(msg.id)
         if (buffer != null) {
@@ -125,7 +127,7 @@ open class YamuxHandler(
 
         val sendWindow = sendWindows.get(child.id)
         if (sendWindow == null) {
-            println("yamux:onChildWrite - null sendWindow")
+            println("yamux:onChildWrite - null sendWindow " + child.id)
             throw Libp2pException("No send window for " + child.id)
         }
         if (sendWindow.get() <= 0) {
