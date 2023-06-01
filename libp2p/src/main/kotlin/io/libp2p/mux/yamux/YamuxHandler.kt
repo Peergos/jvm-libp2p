@@ -91,6 +91,7 @@ open class YamuxHandler(
             return
         val recWindow = receiveWindows.get(msg.id)
         if (recWindow == null) {
+            println("yamux:handleDataRead - null recWindow")
             releaseMessage(msg.data!!)
             throw Libp2pException("No receive window for " + msg.id)
         }
@@ -119,11 +120,14 @@ open class YamuxHandler(
     }
 
     override fun onChildWrite(child: MuxChannel<ByteBuf>, data: ByteBuf) {
+        println("yamux:onChildWrite")
         val ctx = getChannelHandlerContext()
 
         val sendWindow = sendWindows.get(child.id)
-        if (sendWindow == null)
+        if (sendWindow == null) {
+            println("yamux:onChildWrite - null sendWindow")
             throw Libp2pException("No send window for " + child.id)
+        }
         if (sendWindow.get() <= 0) {
             // wait until the window is increased to send more data
             val buffer = sendBuffers.getOrPut(child.id, { SendBuffer(ctx) })
