@@ -75,8 +75,10 @@ open class YamuxHandler(
         when (msg.flags) {
             YamuxFlags.SYN -> {
                 // ACK the new stream
+                println("yamux:handleFlags - ack remote open")
                 onRemoteOpen(msg.id)
                 ctx.writeAndFlush(YamuxFrame(msg.id, YamuxType.WINDOW_UPDATE, YamuxFlags.ACK, 0))
+                onStreamCreate(msg.id) // sometimes writes can happen before onRemoteCreated is called
             }
             YamuxFlags.FIN -> onRemoteDisconnect(msg.id)
             YamuxFlags.RST -> onRemoteClose(msg.id)
@@ -84,6 +86,7 @@ open class YamuxHandler(
     }
 
     fun handleDataRead(msg: YamuxFrame) {
+        println("yamux:handleDataRead")
         val ctx = getChannelHandlerContext()
         val size = msg.lenData
         handleFlags(msg)
@@ -106,6 +109,7 @@ open class YamuxHandler(
     }
 
     fun handleWindowUpdate(msg: YamuxFrame) {
+        println("yamux:handleWindowUpdate")
         handleFlags(msg)
         val size = msg.lenData.toInt()
         val sendWindow = sendWindows.get(msg.id)
@@ -122,7 +126,7 @@ open class YamuxHandler(
     }
 
     override fun onChildWrite(child: MuxChannel<ByteBuf>, data: ByteBuf) {
-        println("yamux:onChildWrite")
+        println("yamux:onChildWrite " + String(data.array()))
         val ctx = getChannelHandlerContext()
 
         val sendWindow = sendWindows.get(child.id)
@@ -153,18 +157,18 @@ open class YamuxHandler(
     }
 
     override fun onLocalOpen(child: MuxChannel<ByteBuf>) {
-        onStreamCreate(child)
+        onStreamCreate(child.id)
         getChannelHandlerContext().writeAndFlush(YamuxFrame(child.id, YamuxType.DATA, YamuxFlags.SYN, 0))
     }
 
     override fun onRemoteCreated(child: MuxChannel<ByteBuf>) {
         println("yamux:onRemoteCreated")
-        onStreamCreate(child)
+        onStreamCreate(child.id)
     }
 
-    private fun onStreamCreate(child: MuxChannel<ByteBuf>) {
-        receiveWindows.put(child.id, AtomicInteger(INITIAL_WINDOW_SIZE))
-        sendWindows.put(child.id, AtomicInteger(INITIAL_WINDOW_SIZE))
+    private fun onStreamCreate(childId: MuxId) {
+        receiveWindows.putIfAbsent(childId, AtomicInteger(INITIAL_WINDOW_SIZE))
+        sendWindows.putIfAbsent(childId, AtomicInteger(INITIAL_WINDOW_SIZE))
     }
 
     override fun onLocalDisconnect(child: MuxChannel<ByteBuf>) {
