@@ -163,17 +163,17 @@ open class YamuxHandler(
 
     override fun onLocalDisconnect(child: MuxChannel<ByteBuf>) {
         println("yamux:onLocalDisconnect")
+        getChannelHandlerContext().writeAndFlush(YamuxFrame(child.id, YamuxType.DATA, YamuxFlags.RST, 0))
+    }
+
+    override fun onLocalClose(child: MuxChannel<ByteBuf>) {
+        println("yamux:onLocalClose")
         val sendWindow = sendWindows.remove(child.id)
         val buffered = sendBuffers.remove(child.id)
         if (buffered != null && sendWindow != null) {
             buffered.flush(sendWindow, child.id)
         }
         getChannelHandlerContext().writeAndFlush(YamuxFrame(child.id, YamuxType.DATA, YamuxFlags.FIN, 0))
-    }
-
-    override fun onLocalClose(child: MuxChannel<ByteBuf>) {
-        println("yamux:onLocalClose")
-        getChannelHandlerContext().writeAndFlush(YamuxFrame(child.id, YamuxType.DATA, YamuxFlags.RST, 0))
     }
 
     override fun onChildClosed(child: MuxChannel<ByteBuf>) {
