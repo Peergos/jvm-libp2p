@@ -88,7 +88,7 @@ open class YamuxHandler(
     fun handleDataRead(msg: YamuxFrame) {
         val ctx = getChannelHandlerContext()
         val size = msg.lenData
-        println("yamux:handleDataRead[ " + msg.id + " size: " + size)
+        println("yamux:handleDataRead[ " + msg)
         handleFlags(msg)
         if (size.toInt() == 0)
             return
@@ -110,7 +110,7 @@ open class YamuxHandler(
     }
 
     fun handleWindowUpdate(msg: YamuxFrame) {
-        println("yamux:handleWindowUpdate[ " + msg.id)
+        println("yamux:handleWindowUpdate[ " + msg)
         handleFlags(msg)
         val size = msg.lenData.toInt()
         val sendWindow = sendWindows.get(msg.id)
