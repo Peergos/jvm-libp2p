@@ -75,9 +75,9 @@ open class YamuxHandler(
         when (msg.flags) {
             YamuxFlags.SYN -> {
                 // ACK the new stream
+                onStreamCreate(msg.id) // sometimes writes can happen before onRemoteCreated is called
                 onRemoteOpen(msg.id)
                 ctx.writeAndFlush(YamuxFrame(msg.id, YamuxType.WINDOW_UPDATE, YamuxFlags.ACK, 0))
-                onStreamCreate(msg.id) // sometimes writes can happen before onRemoteCreated is called
             }
             YamuxFlags.FIN -> onRemoteDisconnect(msg.id)
             YamuxFlags.RST -> onRemoteClose(msg.id)
