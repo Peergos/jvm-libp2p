@@ -127,6 +127,7 @@ open class YamuxHandler(
 
         val sendWindow = sendWindows.get(child.id)
         if (sendWindow == null) {
+            println("NULL SEND WINDOW ON WRITE")
             throw Libp2pException("No send window for " + child.id)
         }
         if (sendWindow.get() <= 0) {
