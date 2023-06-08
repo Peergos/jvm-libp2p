@@ -36,11 +36,11 @@ public class HostTestJava {
     String localListenAddress = "/ip4/127.0.0.1/tcp/40002";
 
     Host clientHost =
-        new HostBuilder()
-            .transport(TcpTransport::new)
-            .secureChannel((k, m) -> new TlsSecureChannel(k, m, "ECDSA"))
-            .muxer(StreamMuxerProtocol::getYamux)
-            .build();
+            new HostBuilder()
+                    .transport(TcpTransport::new)
+                    .secureChannel(TlsSecureChannel::ECDSA)
+                    .muxer(StreamMuxerProtocol::getYamux)
+                    .build();
 
     Host serverHost =
         new HostBuilder()
