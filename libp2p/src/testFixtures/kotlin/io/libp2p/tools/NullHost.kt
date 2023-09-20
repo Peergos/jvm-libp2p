@@ -12,6 +12,7 @@ import io.libp2p.core.StreamPromise
 import io.libp2p.core.crypto.PrivKey
 import io.libp2p.core.multiformats.Multiaddr
 import io.libp2p.core.multistream.ProtocolBinding
+import io.libp2p.transport.ConnectionUpgrader
 import java.util.concurrent.CompletableFuture
 
 open class NullHost : Host {
@@ -30,6 +31,9 @@ open class NullHost : Host {
 
     override val streams: List<Stream>
         get() = TODO("not implemented")
+
+    override val upgrader: ConnectionUpgrader
+        get() = TODO("Not yet implemented")
 
     override fun start(): CompletableFuture<Void> {
         TODO("not implemented")

@@ -202,6 +202,7 @@ open class Builder {
             privKey,
             networkImpl,
             addressBook,
+            upgrader,
             network.listen.map { Multiaddr(it) },
             updatableProtocols,
             broadcastConnHandler,

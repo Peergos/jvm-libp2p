@@ -13,6 +13,7 @@ import io.libp2p.core.StreamPromise
 import io.libp2p.core.crypto.PrivKey
 import io.libp2p.core.multiformats.Multiaddr
 import io.libp2p.core.multistream.ProtocolBinding
+import io.libp2p.transport.ConnectionUpgrader
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -20,6 +21,7 @@ class HostImpl(
     override val privKey: PrivKey,
     override val network: Network,
     override val addressBook: AddressBook,
+    override val upgrader: ConnectionUpgrader,
     private val listenAddrs: List<Multiaddr>,
     private val protocolHandlers: MutableList<ProtocolBinding<Any>>,
     private val connectionHandlers: ConnectionHandler.Broadcast,

@@ -4,6 +4,7 @@ import io.libp2p.core.crypto.PrivKey
 import io.libp2p.core.multiformats.Multiaddr
 import io.libp2p.core.multistream.ProtocolBinding
 import io.libp2p.core.multistream.ProtocolId
+import io.libp2p.transport.ConnectionUpgrader
 import java.util.concurrent.CompletableFuture
 
 /**
@@ -48,6 +49,11 @@ interface Host {
      * use [Stream.closeFuture] to be synchronously notified on stream close
      */
     val streams: List<Stream>
+
+    /**
+     * The upgrader used to add security and muxer protocols to an underlying transport
+     */
+    val upgrader: ConnectionUpgrader
 
     /**
      * Starts all services of this host (like listening transports, etc)
