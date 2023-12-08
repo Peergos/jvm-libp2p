@@ -20,8 +20,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * JmDNS service information.
@@ -29,8 +27,6 @@ import org.slf4j.LoggerFactory;
  * @author Arthur van Hoff, Jeff Sonstein, Werner Randelshofer, Victor Toni
  */
 public class ServiceInfoImpl extends ServiceInfo {
-  private static Logger logger = LoggerFactory.getLogger(ServiceInfoImpl.class.getName());
-
   private String _domain;
   private String _protocol;
   private String _application;

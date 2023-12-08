@@ -12,10 +12,11 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable
-import org.slf4j.LoggerFactory
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit.SECONDS
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.logging.Level
+import java.util.logging.Logger
 
 @Tag("transport")
 abstract class TransportTests {
@@ -25,7 +26,7 @@ abstract class TransportTests {
     protected lateinit var transportUnderTest: Transport
 
     protected val nullConnHandler = ConnectionHandler { }
-    protected val logger = LoggerFactory.getLogger("test")
+    protected val logger = Logger.getLogger("test")
 
     protected fun startListeners(server: Transport, startPortNumber: Int, howMany: Int) {
         val listening = (0 until howMany).map {
@@ -33,7 +34,7 @@ abstract class TransportTests {
                 localAddress(startPortNumber + it),
                 nullConnHandler
             )
-            bindComplete.handle { _, u -> logger.info("Bound #$it", u) }
+            bindComplete.handle { _, u -> logger.log(Level.INFO,"Bound #$it", u) }
             logger.info("Binding #$it")
             bindComplete
         }
@@ -170,7 +171,7 @@ abstract class TransportTests {
             val unbindComplete = transportUnderTest.unlisten(
                 localAddress(portNumber + it)
             )
-            unbindComplete.handle { _, u -> logger.info("Unbound #$it", u) }
+            unbindComplete.handle { _, u -> logger.log(Level.INFO,"Unbound #$it", u) }
             logger.info("Unbinding #$it")
             unbindComplete
         }

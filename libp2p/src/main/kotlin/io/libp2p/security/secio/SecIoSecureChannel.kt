@@ -13,10 +13,11 @@ import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.SimpleChannelInboundHandler
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder
 import io.netty.handler.codec.LengthFieldPrepender
-import org.slf4j.LoggerFactory
 import java.util.concurrent.CompletableFuture
+import java.util.logging.Level
+import java.util.logging.Logger
 
-private val log = LoggerFactory.getLogger(SecIoSecureChannel::class.java)
+private val log = Logger.getLogger(SecIoSecureChannel::class.java.name)
 private val HandshakeHandlerName = "SecIoHandshake"
 
 class SecIoSecureChannel(private val localKey: PrivKey) : SecureChannel {
@@ -88,7 +89,7 @@ private class SecIoHandshake(
 
     override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
         handshakeComplete.completeExceptionally(cause)
-        log.debug("SecIo handshake failed", cause)
+        log.log(Level.FINE,"SecIo handshake failed", cause)
         ctx.channel().close()
     }
 

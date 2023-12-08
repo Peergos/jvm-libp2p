@@ -7,8 +7,8 @@ package io.libp2p.discovery.mdns.impl;
 import java.io.IOException;
 import java.net.*;
 import java.util.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * HostInfo information on the local host to be able to cope with change of addresses.
@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory;
  * @author Pierre Frisch, Werner Randelshofer
  */
 public class HostInfo {
-  private static Logger logger = LoggerFactory.getLogger(HostInfo.class.getName());
+  private static Logger logger = Logger.getLogger(HostInfo.class.getName());
 
   protected String _name;
 
@@ -50,7 +50,7 @@ public class HostInfo {
           }
         }
         if (addr.isLoopbackAddress()) {
-          logger.warn("Could not find any address beside the loopback.");
+          logger.log(Level.WARNING,"Could not find any address beside the loopback.");
         }
       }
       if (aName.length() == 0) {
@@ -61,7 +61,7 @@ public class HostInfo {
             ((jmdnsName != null) && (jmdnsName.length() > 0) ? jmdnsName : addr.getHostAddress());
       }
     } catch (final IOException e) {
-      logger.warn(
+      logger.log(Level.WARNING,
           "Could not initialize the host network interface on "
               + address
               + "because of an error: "
@@ -94,13 +94,13 @@ public class HostInfo {
           for (Enumeration<InetAddress> iaenum = nif.getInetAddresses();
               iaenum.hasMoreElements(); ) {
             InetAddress interfaceAddress = iaenum.nextElement();
-            logger.trace("Found NetworkInterface/InetAddress: {} -- {}", nif, interfaceAddress);
+            logger.log(Level.FINEST,"Found NetworkInterface/InetAddress: {} -- {}", new Object[] {nif, interfaceAddress});
             result.add(interfaceAddress);
           }
         }
       }
     } catch (SocketException se) {
-      logger.warn("Error while fetching network interfaces addresses: " + se);
+      logger.log(Level.WARNING,"Error while fetching network interfaces addresses: " + se);
     }
     return result.toArray(new InetAddress[result.size()]);
   }
@@ -141,7 +141,7 @@ public class HostInfo {
       try {
         _interface = NetworkInterface.getByInetAddress(address);
       } catch (Exception exception) {
-        logger.warn("LocalHostInfo() exception ", exception);
+        logger.log(Level.WARNING,"LocalHostInfo() exception ", exception);
       }
     }
   }

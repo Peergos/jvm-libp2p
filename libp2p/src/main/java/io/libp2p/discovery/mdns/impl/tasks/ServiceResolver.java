@@ -14,15 +14,15 @@ import java.io.IOException;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * The ServiceResolver queries three times consecutively for services of a given type, and then
  * removes itself from the timer.
  */
 public class ServiceResolver extends DNSTask {
-  private static Logger logger = LoggerFactory.getLogger(ServiceResolver.class.getName());
+  private static Logger logger = Logger.getLogger(ServiceResolver.class.getName());
 
   private final String _type;
   private final int _queryInterval;
@@ -55,14 +55,14 @@ public class ServiceResolver extends DNSTask {
   @Override
   public void run() {
     try {
-      logger.debug("{}.run() JmDNS {}", this.getName(), this.description());
+      logger.log(Level.FINE, "{}.run() JmDNS {}", new Object[] {this.getName(), this.description()});
       DNSOutgoing out = new DNSOutgoing(DNSConstants.FLAGS_QR_QUERY);
       out = this.addQuestions(out);
       if (!out.isEmpty()) {
         this.dns().send(out);
       }
     } catch (Throwable e) {
-      logger.warn(this.getName() + ".run() exception ", e);
+      logger.log(Level.WARNING,this.getName() + ".run() exception ", e);
     }
   }
 

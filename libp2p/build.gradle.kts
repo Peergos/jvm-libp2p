@@ -26,7 +26,6 @@ dependencies {
 
     testImplementation(project(":tools:schedulers"))
 
-    testFixturesApi("org.apache.logging.log4j:log4j-core")
     testFixturesImplementation(project(":tools:schedulers"))
     testFixturesImplementation("io.netty:netty-transport-classes-epoll")
     testFixturesImplementation("io.netty:netty-handler")

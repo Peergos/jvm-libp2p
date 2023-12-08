@@ -36,8 +36,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Derived from mDNS implementation in Java.
@@ -46,7 +46,7 @@ import org.slf4j.LoggerFactory;
  *     Lewis, Kai Kreuzer, Victor Toni
  */
 public class JmDNSImpl extends JmDNS {
-  private static Logger logger = LoggerFactory.getLogger(JmDNSImpl.class.getName());
+  private static Logger logger = Logger.getLogger(JmDNSImpl.class.getName());
 
   /** This is the multicast group, we are listening to for multicast DNS messages. */
   private volatile InetAddress _group;
@@ -95,7 +95,7 @@ public class JmDNSImpl extends JmDNS {
    */
   public JmDNSImpl(InetAddress address, String name) {
     super();
-    logger.debug("JmDNS instance created");
+    logger.log(Level.FINE,"JmDNS instance created");
 
     _answerListeners = new ConcurrentHashMap<>();
     _serviceResolvers = new ConcurrentHashMap<>();
@@ -121,7 +121,7 @@ public class JmDNSImpl extends JmDNS {
       try {
         this.registerService(new ServiceInfoImpl(info));
       } catch (final Exception exception) {
-        logger.warn("start() Registration exception ", exception);
+        logger.log(Level.WARNING, "start() Registration exception ", exception);
       }
     }
   }
@@ -143,7 +143,7 @@ public class JmDNSImpl extends JmDNS {
     // try {
     // _socket = new MulticastSocket(address);
     // } catch (Exception exception) {
-    // logger.warn("openMulticastSocket() Open socket exception Address: " + address + ", ",
+    // logger.log(Level.WARNING, "openMulticastSocket() Open socket exception Address: " + address + ", ",
     // exception);
     // // The most likely cause is a duplicate address lets open without specifying the address
     // _socket = new MulticastSocket(DNSConstants.MDNS_PORT);
@@ -153,12 +153,12 @@ public class JmDNSImpl extends JmDNS {
       final SocketAddress multicastAddr = new InetSocketAddress(_group, DNSConstants.MDNS_PORT);
       _socket.setNetworkInterface(hostInfo.getInterface());
 
-      logger.trace("Trying to joinGroup({}, {})", multicastAddr, hostInfo.getInterface());
+      logger.log(Level.FINEST,"Trying to joinGroup({}, {})", new Object[] {multicastAddr, hostInfo.getInterface()});
 
       // this joinGroup() might be less surprisingly so this is the default
       _socket.joinGroup(multicastAddr, hostInfo.getInterface());
     } else {
-      logger.trace("Trying to joinGroup({})", _group);
+      logger.log(Level.FINEST,"Trying to joinGroup({})", _group);
       _socket.joinGroup(_group);
     }
 
@@ -168,7 +168,7 @@ public class JmDNSImpl extends JmDNS {
   private void closeMulticastSocket() {
     // jP: 20010-01-18. See below. We'll need this monitor...
     // assert (Thread.holdsLock(this));
-    logger.debug("closeMulticastSocket()");
+    logger.log(Level.FINE,"closeMulticastSocket()");
     if (_socket != null) {
       // close socket
       try {
@@ -179,7 +179,7 @@ public class JmDNSImpl extends JmDNS {
         }
         _socket.close();
       } catch (final Exception exception) {
-        logger.warn("closeMulticastSocket() Close socket exception ", exception);
+        logger.log(Level.WARNING, "closeMulticastSocket() Close socket exception ", exception);
       }
       _socket = null;
     }
@@ -250,7 +250,7 @@ public class JmDNSImpl extends JmDNS {
 
     _services.putIfAbsent(info.getKey(), info);
 
-    logger.debug("registerService() JmDNS registered service as {}", info);
+    logger.log(Level.FINE,"registerService() JmDNS registered service as {}", info);
   }
 
   /**
@@ -312,7 +312,7 @@ public class JmDNSImpl extends JmDNS {
    * @throws IOException
    */
   void handleQuery(DNSIncoming in, InetAddress addr, int port) throws IOException {
-    logger.debug("{} handle query: {}", this.getName(), in);
+    logger.log(Level.FINE,"{} handle query: {}", new Object[] {this.getName(), in});
     this.ioLock();
     try {
       DNSIncoming plannedAnswer = in.clone();
@@ -344,17 +344,14 @@ public class JmDNSImpl extends JmDNS {
       byte[] message = out.data();
       final DatagramPacket packet = new DatagramPacket(message, message.length, addr, port);
 
-      if (logger.isTraceEnabled()) {
+      if (logger.isLoggable(Level.FINEST)) {
         try {
           final DNSIncoming msg = new DNSIncoming(packet);
-          if (logger.isTraceEnabled()) {
-            logger.trace("send({}) JmDNS out:{}", this.getName(), msg.print(true));
+          if (logger.isLoggable(Level.FINEST)) {
+            logger.log(Level.FINEST,"send({}) JmDNS out:{}", new Object[] {this.getName(), msg.print(true)});
           }
         } catch (final IOException e) {
-          logger.debug(
-              getClass().toString(),
-              ".send(" + this.getName() + ") - JmDNS can not parse what it sends!!!",
-              e);
+          logger.log(Level.FINE, getClass().toString() + ".send(" + this.getName() + ") - JmDNS can not parse what it sends!!!", e);
         }
       }
       final MulticastSocket ms = _socket;
@@ -376,7 +373,7 @@ public class JmDNSImpl extends JmDNS {
   }
 
   public void stop() {
-    logger.debug("Stopping JmDNS: {}", this);
+    logger.log(Level.FINE,"Stopping JmDNS: {}", this);
 
     List<Future<Void>> shutdowns = new ArrayList<>();
 
@@ -388,25 +385,25 @@ public class JmDNSImpl extends JmDNS {
     // close socket
     this.closeMulticastSocket();
 
-    logger.debug("JmDNS waiting for service stop...");
+    logger.log(Level.FINE,"JmDNS waiting for service stop...");
 
     for (Future<Void> shutdown : shutdowns) {
       try {
         shutdown.get(10, TimeUnit.SECONDS);
       } catch (CancellationException e) {
-        logger.trace("Task was already cancelled", e);
+        logger.log(Level.FINEST,"Task was already cancelled", e);
       } catch (InterruptedException e) {
-        logger.trace("Stopping was interrupted", e);
+        logger.log(Level.FINEST,"Stopping was interrupted", e);
         Thread.currentThread().interrupt();
       } catch (ExecutionException | TimeoutException e) {
-        logger.debug("Exception when stopping JmDNS: ", e);
+        logger.log(Level.FINE,"Exception when stopping JmDNS: ", e);
         throw new RuntimeException(e);
       }
     }
 
     _executor.shutdown();
 
-    logger.debug("JmDNS stopped.");
+    logger.log(Level.FINE,"JmDNS stopped.");
   }
 
   /** {@inheritDoc} */

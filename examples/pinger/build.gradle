@@ -4,8 +4,6 @@ plugins {
 
 dependencies {
   implementation project(':libp2p')
-
-  runtimeOnly("org.apache.logging.log4j:log4j-slf4j2-impl")
 }
 
 application {

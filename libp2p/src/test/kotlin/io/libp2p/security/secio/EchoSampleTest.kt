@@ -24,9 +24,9 @@ import io.netty.handler.logging.LoggingHandler
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
-import org.slf4j.LoggerFactory
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+import java.util.logging.Logger
 
 class EchoProtocol : SimpleClientHandler() {
     private val respFuture = CompletableFuture<String>()
@@ -51,7 +51,7 @@ class EchoSampleTest {
     @Test
     @Disabled
     fun connect1() {
-        val logger = LoggerFactory.getLogger("test")
+        val logger = Logger.getLogger("test")
 
         val (privKey1, _) = generateKeyPair(KeyType.ECDSA)
         val applicationProtocols = listOf(createSimpleBinding("/echo/1.0.0") { EchoProtocol() })

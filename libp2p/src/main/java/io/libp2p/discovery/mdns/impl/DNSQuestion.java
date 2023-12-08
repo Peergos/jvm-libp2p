@@ -8,9 +8,11 @@ import io.libp2p.discovery.mdns.ServiceInfo;
 import io.libp2p.discovery.mdns.impl.constants.DNSConstants;
 import io.libp2p.discovery.mdns.impl.constants.DNSRecordClass;
 import io.libp2p.discovery.mdns.impl.constants.DNSRecordType;
+
+import java.util.List;
 import java.util.Set;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * A DNS question.
@@ -18,7 +20,7 @@ import org.slf4j.LoggerFactory;
  * @author Arthur van Hoff, Pierre Frisch
  */
 public class DNSQuestion extends DNSEntry {
-  private static Logger logger = LoggerFactory.getLogger(DNSQuestion.class.getName());
+  private static Logger logger = Logger.getLogger(DNSQuestion.class.getName());
 
   /** Pointer question. */
   private static class Pointer extends DNSQuestion {
@@ -76,12 +78,12 @@ public class DNSQuestion extends DNSEntry {
                 DNSConstants.DNS_TTL,
                 jmDNSImpl.getLocalHost()));
       }
-      logger.debug(
+      logger.log(Level.FINE,
           "{} DNSQuestion({}).addAnswersForServiceInfo(): info: {}\n{}",
-          jmDNSImpl.getName(),
+          List.of(jmDNSImpl.getName(),
           this.getName(),
           info,
-          answers);
+          answers));
     }
   }
 

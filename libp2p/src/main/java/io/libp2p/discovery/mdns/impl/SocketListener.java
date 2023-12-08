@@ -11,12 +11,12 @@ import java.net.DatagramPacket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /** Listen for multicast packets. */
 class SocketListener implements Runnable {
-  static Logger logger = LoggerFactory.getLogger(SocketListener.class.getName());
+  static Logger logger = Logger.getLogger(SocketListener.class.getName());
 
   private final JmDNSImpl _jmDNSImpl;
   private final String _name;
@@ -56,8 +56,8 @@ class SocketListener implements Runnable {
 
           DNSIncoming msg = new DNSIncoming(packet);
           if (msg.isValidResponseCode()) {
-            if (logger.isTraceEnabled()) {
-              logger.trace("{}.run() JmDNS in:{}", _name, msg.print(true));
+            if (logger.isLoggable(Level.FINEST)) {
+              logger.log(Level.FINEST, "{}.run() JmDNS in:{}", new Object[] {_name, msg.print(true)});
             }
             if (msg.isQuery()) {
               if (packet.getPort() != DNSConstants.MDNS_PORT) {
@@ -68,17 +68,18 @@ class SocketListener implements Runnable {
               this._jmDNSImpl.handleResponse(msg);
             }
           } else {
-            if (logger.isDebugEnabled()) {
-              logger.debug("{}.run() JmDNS in message with error code: {}", _name, msg.print(true));
+            if (logger.isLoggable(Level.FINE)) {
+              logger.log(Level.FINE, "{}.run() JmDNS in message with error code: {}", new Object[] {_name, msg.print(true)});
             }
           }
         } catch (IOException e) {
-          logger.warn(_name + ".run() exception ", e);
+          logger.log(Level.WARNING, _name + ".run() exception ", e);
         }
       }
     } catch (IOException e) {
-      if (!_closed) logger.warn(_name + ".run() exception ", e);
+      if (!_closed)
+        logger.log(Level.WARNING, _name + ".run() exception ", e);
     }
-    logger.trace("{}.run() exiting.", _name);
+    logger.log(Level.FINEST, "{}.run() exiting.", _name);
   }
 }

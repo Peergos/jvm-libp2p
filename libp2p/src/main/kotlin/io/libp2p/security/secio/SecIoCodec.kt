@@ -15,11 +15,12 @@ import org.bouncycastle.crypto.engines.AESEngine
 import org.bouncycastle.crypto.modes.SICBlockCipher
 import org.bouncycastle.crypto.params.KeyParameter
 import org.bouncycastle.crypto.params.ParametersWithIV
-import org.slf4j.LoggerFactory
 import java.io.IOException
+import java.util.logging.Level
+import java.util.logging.Logger
 
 class SecIoCodec(val local: SecioParams, val remote: SecioParams) : MessageToMessageCodec<ByteBuf, ByteBuf>() {
-    private val log = LoggerFactory.getLogger(SecIoCodec::class.java)
+    private val log = Logger.getLogger(SecIoCodec::class.java.name)
 
     private val localCipher = createCipher(local)
     private val remoteCipher = createCipher(remote)
@@ -72,12 +73,12 @@ class SecIoCodec(val local: SecioParams, val remote: SecioParams) : MessageToMes
     override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
         if (cause.hasCauseOfType(IOException::class)) {
             // Trace level because having clients unexpectedly disconnect is extremely common
-            log.trace("IOException in SecIO channel", cause)
+            log.log(Level.FINEST,"IOException in SecIO channel", cause)
         } else if (cause.hasCauseOfType(SecureChannelError::class)) {
-            log.debug("Invalid SecIO content", cause)
+            log.log(Level.FINE,"Invalid SecIO content", cause)
             closeAbruptly(ctx)
         } else {
-            log.error("Unexpected error in SecIO channel", cause)
+            log.log(Level.SEVERE,"Unexpected error in SecIO channel", cause)
         }
     } // exceptionCaught
 
