@@ -57,16 +57,13 @@ configure(
         implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")
 
         implementation("com.google.guava:guava")
-        implementation("org.slf4j:slf4j-api")
 
         testFixturesImplementation("com.google.guava:guava")
-        testFixturesImplementation("org.slf4j:slf4j-api")
 
         testImplementation("org.junit.jupiter:junit-jupiter")
         testImplementation("org.junit.jupiter:junit-jupiter-params")
         testImplementation("io.mockk:mockk")
         testImplementation("org.assertj:assertj-core")
-        testRuntimeOnly("org.apache.logging.log4j:log4j-slf4j2-impl")
     }
 
     java {
