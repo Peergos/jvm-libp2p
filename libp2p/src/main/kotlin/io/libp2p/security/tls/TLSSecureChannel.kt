@@ -184,7 +184,7 @@ private class ChannelSetup(
                     ctx
                 )
             )
-            ctx.channel().pipeline().remove(SetupHandlerName)
+            handshakeComplete.thenAccept {_ -> ctx.channel().pipeline().remove(SetupHandlerName)}
         }
     }
 
