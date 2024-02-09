@@ -37,6 +37,7 @@ import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import java.math.BigInteger
+import java.net.Socket
 import java.security.KeyFactory
 import java.security.PrivateKey
 import java.security.PublicKey
@@ -51,7 +52,8 @@ import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.logging.Level
 import java.util.logging.Logger
-import javax.net.ssl.X509TrustManager
+import javax.net.ssl.SSLEngine
+import javax.net.ssl.X509ExtendedTrustManager
 import kotlin.experimental.or
 
 private val log = Logger.getLogger(TlsSecureChannel::class.java.name)
@@ -112,7 +114,6 @@ fun buildTlsHandler(
         .ciphers(listOf("TLS_AES_128_GCM_SHA256", "TLS_AES_256_GCM_SHA384", "TLS_CHACHA20_POLY1305_SHA256"))
         .clientAuth(ClientAuth.REQUIRE)
         .trustManager(Libp2pTrustManager(expectedRemotePeer))
-//        .sslContextProvider(BouncyCastleJsseProvider())
         .applicationProtocolConfig(
             ApplicationProtocolConfig(
                 ApplicationProtocolConfig.Protocol.ALPN,
@@ -207,7 +208,7 @@ private class ChannelSetup(
     }
 }
 
-class Libp2pTrustManager(private val expectedRemotePeer: Optional<PeerId>) : X509TrustManager {
+class Libp2pTrustManager(private val expectedRemotePeer: Optional<PeerId>) : X509ExtendedTrustManager() {
     override fun checkClientTrusted(certs: Array<out X509Certificate>?, authType: String?) {
         if (certs?.size != 1) {
             throw CertificateException()
@@ -216,6 +217,22 @@ class Libp2pTrustManager(private val expectedRemotePeer: Optional<PeerId>) : X50
         if (expectedRemotePeer.map { ex -> !ex.equals(claimedPeerId) }.orElse(false)) {
             throw InvalidRemotePubKey()
         }
+    }
+
+    override fun checkClientTrusted(certs: Array<out X509Certificate>?, authType: String?, p2: Socket?) {
+        checkClientTrusted(certs, authType)
+    }
+
+    override fun checkClientTrusted(certs: Array<out X509Certificate>?, authType: String?, p2: SSLEngine?) {
+        checkClientTrusted(certs, authType)
+    }
+
+    override fun checkServerTrusted(certs: Array<out X509Certificate>?, authType: String?, p2: Socket?) {
+        checkServerTrusted(certs, authType)
+    }
+
+    override fun checkServerTrusted(certs: Array<out X509Certificate>?, authType: String?, p2: SSLEngine?) {
+        checkServerTrusted(certs, authType)
     }
 
     override fun checkServerTrusted(certs: Array<out X509Certificate>?, authType: String?) {
