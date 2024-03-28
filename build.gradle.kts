@@ -167,7 +167,6 @@ configure(
                         }
                     }
                     artifact(sourcesJar.get())
-                    artifact(dokkaJar.get())
                     groupId = "io.libp2p"
                     artifactId = project.property("mavenArtifactId") as String
                 }
