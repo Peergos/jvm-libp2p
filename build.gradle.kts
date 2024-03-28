@@ -143,14 +143,6 @@ configure(
         }
     }
 
-    val dokkaJar: TaskProvider<Jar> by tasks.registering(Jar::class) {
-        group = JavaBasePlugin.DOCUMENTATION_GROUP
-        val dokkaJavadocTask = tasks.getByName("dokkaJavadoc")
-        dependsOn(dokkaJavadocTask)
-        archiveClassifier.set("javadoc")
-        from(dokkaJavadocTask.outputs)
-    }
-
     publishing {
         repositories {
             maven {
