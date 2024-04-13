@@ -221,6 +221,71 @@ public class HostTestJava {
   }
 
   @Test
+  void getLargeBlocks() throws Exception {
+    int blobSize = 1024 * 1024;
+    String localListenAddress = "/ip4/127.0.0.1/tcp/40002";
+
+    Host clientHost =
+            new HostBuilder()
+                    .transport(TcpTransport::new)
+                    .secureChannel(NoiseXXSecureChannel::new)
+                    .muxer(StreamMuxerProtocol::getYamux)
+                    .builderModifier(
+                            b -> b.getDebug().getMuxFramesHandler().addCompactLogger(LogLevel.ERROR, "client"))
+                    .build();
+
+    Host serverHost =
+            new HostBuilder()
+                    .transport(TcpTransport::new)
+                    .secureChannel(NoiseXXSecureChannel::new)
+                    .muxer(StreamMuxerProtocol::getYamux)
+                    .protocol(new RandomBlocks())
+                    .listen(localListenAddress)
+                    .builderModifier(
+                            b -> b.getDebug().getMuxFramesHandler().addCompactLogger(LogLevel.ERROR, "server"))
+                    .build();
+
+    CompletableFuture<Void> clientStarted = clientHost.start();
+    CompletableFuture<Void> serverStarted = serverHost.start();
+    clientStarted.get(5, TimeUnit.SECONDS);
+    System.out.println("Client started");
+    serverStarted.get(5, TimeUnit.SECONDS);
+    System.out.println("Server started");
+
+    Assertions.assertEquals(0, clientHost.listenAddresses().size());
+    Assertions.assertEquals(1, serverHost.listenAddresses().size());
+    Assertions.assertEquals(
+            localListenAddress + "/p2p/" + serverHost.getPeerId(),
+            serverHost.listenAddresses().get(0).toString());
+
+    StreamPromise<RandomBlocksController> blob =
+            clientHost
+                    .getNetwork()
+                    .connect(serverHost.getPeerId(), new Multiaddr(localListenAddress))
+                    .thenApply(it -> it.muxerSession().createStream(new RandomBlocks()))
+                    .join();
+
+    Stream blobStream = blob.getStream().get(5, TimeUnit.SECONDS);
+    System.out.println("Blocks stream created");
+    RandomBlocksController blobCtr = blob.getController().get(5, TimeUnit.SECONDS);
+    System.out.println("Blocks controller created");
+
+    for (int i = 0; i < 10; i++) {
+      long res = blobCtr.requestBlocks(blobSize, 10).join();
+    }
+    blobStream.close().get(5, TimeUnit.SECONDS);
+    System.out.println("Blocks stream closed");
+
+    Assertions.assertThrows(
+            ExecutionException.class, () -> blobCtr.requestBlocks(blobSize, 10).get(5, TimeUnit.SECONDS));
+
+    clientHost.stop().get(5, TimeUnit.SECONDS);
+    System.out.println("Client stopped");
+    serverHost.stop().get(5, TimeUnit.SECONDS);
+    System.out.println("Server stopped");
+  }
+
+  @Test
   void addPingAfterHostStart() throws Exception {
     String localListenAddress = "/ip4/127.0.0.1/tcp/40002";
 
