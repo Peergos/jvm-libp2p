@@ -57,6 +57,10 @@ class MDnsDiscovery(
         )
     }
 
+    fun addHandler(h: PeerListener) {
+        newPeerFoundListeners += h
+    }
+
     internal fun peerFound(peerInfo: PeerInfo) {
         newPeerFoundListeners.forEach { it(peerInfo) }
     }
