@@ -112,7 +112,7 @@ class MDnsDiscovery(
                 val aRecords = answers.filter { DNSRecordType.TYPE_A.equals(it.recordType) }
                 val aaaaRecords = answers.filter { DNSRecordType.TYPE_AAAA.equals(it.recordType) }
 
-                if (txtRecord == null || srvRecord == null || aRecords.isEmpty()) {
+                if (txtRecord == null || srvRecord == null || (aRecords.isEmpty() && aaaaRecords.isEmpty())) {
                     return // incomplete answers
                 }
 
