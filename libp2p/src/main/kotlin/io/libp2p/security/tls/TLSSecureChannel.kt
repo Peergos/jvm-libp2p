@@ -220,7 +220,7 @@ class Libp2pTrustManager(private val expectedRemotePeer: Optional<PeerId>) : X50
         remoteCert = null
     }
     override fun checkClientTrusted(certs: Array<out X509Certificate>?, authType: String?) {
-        if (certs?.size != 1) {
+        if (certs?.size != 1)
             throw CertificateException()
         val cert = certs.get(0)
         remoteCert = cert
@@ -308,7 +308,6 @@ fun verifyAndExtractPeerId(chain: Array<Certificate>): PeerId {
     val pubKeyAsn1 = bcCert.subjectPublicKeyInfo.encoded
     if (! pubKey.verify(certificatePrefix.plus(pubKeyAsn1), signature))
         throw IllegalStateException("Invalid signature on TLS certificate extension!")
-    }
 
     cert.verify(cert.publicKey)
     val now = Date()
