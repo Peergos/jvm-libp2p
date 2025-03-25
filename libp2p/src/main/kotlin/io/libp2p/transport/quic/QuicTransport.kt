@@ -78,6 +78,12 @@ class QuicTransport(
         fun Ecdsa(k: PrivKey, p: List<ProtocolBinding<*>>): QuicTransport {
             return QuicTransport(k, "ECDSA", p)
         }
+
+        private fun createStream(channel: Channel, connection: Connection): Stream {
+            val stream = StreamOverNetty(channel, connection, true)
+            channel.attr(STREAM).set(stream)
+            return stream
+        }
     }
 
     private var server by lazyVar {
@@ -126,7 +132,11 @@ class QuicTransport(
         }
     }
 
-    override fun listen(addr: Multiaddr, connHandler: ConnectionHandler, preHandler: ChannelVisitor<P2PChannel>?): CompletableFuture<Unit> {
+    override fun listen(
+        addr: Multiaddr,
+        connHandler: ConnectionHandler,
+        preHandler: ChannelVisitor<P2PChannel>?
+    ): CompletableFuture<Unit> {
         if (closed) throw Libp2pException("Transport is closed")
 
         val channelHandler = serverTransportBuilder(connHandler, preHandler)
@@ -164,12 +174,6 @@ class QuicTransport(
             ?: throw Libp2pException("No listeners on address $addr")
     }
 
-    private fun createStream(channel: Channel, connection: Connection): Stream {
-        val stream = StreamOverNetty(channel, connection, true)
-        channel.attr(STREAM).set(stream)
-        return stream
-    }
-
     override fun dial(addr: Multiaddr, connHandler: ConnectionHandler, preHandler: ChannelVisitor<P2PChannel>?):
         CompletableFuture<Connection> {
         if (closed) throw Libp2pException("Transport is closed")
@@ -182,7 +186,7 @@ class QuicTransport(
             .sslTaskExecutor(workerGroup)
             .build()
 
-        val chanFuture = QuicChannel.newBootstrap(
+        val connFuture = QuicChannel.newBootstrap(
             client.clone()
                 .handler(handler)
                 .localAddress(0)
@@ -197,7 +201,7 @@ class QuicTransport(
 //            .handler(connHandler)
             .streamHandler(object : ChannelHandler {
                 override fun handlerAdded(ctx: ChannelHandlerContext?) {
-                    TODO("Not yet implemented")
+                    println("incoming stream opened on outbound connection")
                 }
 
                 override fun handlerRemoved(ctx: ChannelHandlerContext?) {
@@ -212,8 +216,8 @@ class QuicTransport(
             .connect()
 
         val res = CompletableFuture<Connection>()
-        chanFuture.also { registerChannel(it.get()) }
-        chanFuture.also {
+        connFuture.also {
+            registerChannel(it.get())
             val connection = ConnectionOverNetty(it.get(), this, true)
             connection.setMuxerSession(object : StreamMuxer.Session {
                 override fun <T> createStream(protocols: List<ProtocolBinding<T>>): StreamPromise<T> {
@@ -223,16 +227,20 @@ class QuicTransport(
 
                     val controller = CompletableFuture<T>()
                     val streamFut = CompletableFuture<Stream>()
-                    val chanFut = it.get().createStream(
+                    println("creating outbound connection stream")
+                    it.get().createStream(
                         QuicStreamType.BIDIRECTIONAL,
                         object : ChannelHandler {
                             override fun handlerAdded(ctx: ChannelHandlerContext?) {
                                 val stream = createStream(ctx!!.channel(), connection)
-                                multi.toStreamHandler().handleStream(stream).forward(controller).apply { streamFut.complete(stream) }
-                                ctx.pipeline().addLast()
+                                println("outbound stream handler added " + ctx.channel())
+                                ctx.channel().attr(STREAM).set(stream)
+                                val streamHandler = multi.toStreamHandler()
+                                streamHandler.handleStream(stream).forward(controller).apply { streamFut.complete(stream) }
                             }
 
                             override fun handlerRemoved(ctx: ChannelHandlerContext?) {
+                                println("outbound stream handler removed")
                                 TODO("Not yet implemented handler removal")
                             }
 
@@ -242,11 +250,6 @@ class QuicTransport(
                             }
                         }
                     )
-                    chanFut.apply {
-                        val stream = createStream(chanFut.get(), connection)
-//                        multi.initChannel(stream).forward(controller).apply { streamFut.complete(stream) }
-                        multi.toStreamHandler().handleStream(stream).forward(controller).apply { streamFut.complete(stream) }
-                    }
                     return StreamPromise(streamFut, controller)
                 }
             })
@@ -332,50 +335,35 @@ class QuicTransport(
             .handler(object : ChannelInboundHandlerAdapter() {
                 override fun channelRegistered(ctx: ChannelHandlerContext?) {
                     super.channelRegistered(ctx)
-                    println("chan registered")
-                    if (ctx != null) {
-                        val connection = ConnectionOverNetty(ctx.channel(), this@QuicTransport, false)
-//                        preHandler?.also { it.visit(connection) }
-//                        connHandler.handleConnection(connection)
-//                        incomingMultistreamProtocol.createMultistream(protocols).initChannel(connection)
-
-//                        val connection = ctx.channel().attr(CONNECTION).get()
-                        val stream = StreamOverNetty(ctx.channel(), connection, false)
-                        ctx.channel().attr(STREAM).set(stream)
-                        preHandler?.also { it.visit(connection) }
-                        connHandler.handleConnection(connection)
-                        val handler = incomingMultistreamProtocol.createMultistream(protocols).toStreamHandler()
-                        handler.handleStream(stream)
-                    }
+                    println("inbound connection registered")
                 }
 
                 override fun channelActive(ctx: ChannelHandlerContext) {
                     super.channelActive(ctx)
-                    println("chan active")
+                    println("inbound connection active")
+                    val connection = ConnectionOverNetty(ctx.channel(), this@QuicTransport, false)
+                    preHandler?.also { it.visit(connection) }
+                    connHandler.handleConnection(connection)
                 }
 
                 override fun channelRead(ctx: ChannelHandlerContext, msg: Any) {
                     super.channelRead(ctx, msg)
-                    println("chan read " + msg)
+                    println("inbound connection read " + msg)
                 }
             })
-            .streamHandler(object : ChannelHandler {
-                override fun handlerAdded(ctx: ChannelHandlerContext?) {
-                    println("Quic server side stream handler added")
-                    val connection = ctx!!.channel().attr(CONNECTION).get()
-                    connHandler.handleConnection(connection)
-                }
-
-                override fun handlerRemoved(ctx: ChannelHandlerContext?) {
-                    TODO("Not yet implemented handler removal")
-                }
-
-                @Deprecated("Deprecated in Java")
-                override fun exceptionCaught(ctx: ChannelHandlerContext?, cause: Throwable?) {
-                    TODO("Not yet implemented exception caught")
-                }
-            })
+            .streamHandler(InboundStreamHandler(incomingMultistreamProtocol, protocols))
             .build()
+    }
+
+    class InboundStreamHandler(val handler: MultistreamProtocol,
+                                val protocols: List<ProtocolBinding<*>>) : ChannelInboundHandlerAdapter() {
+        override fun channelRegistered(ctx: ChannelHandlerContext?) {
+            println("server side init stream")
+            val connection = ctx!!.channel().attr(CONNECTION).get()
+            val stream = createStream(ctx.channel(), connection)
+            val streamHandler = handler.createMultistream(protocols).toStreamHandler()
+            streamHandler.handleStream(stream)
+        }
     }
 
     class NoTokenHandler() : QuicTokenHandler {

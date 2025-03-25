@@ -8,7 +8,6 @@ import io.libp2p.core.crypto.*;
 import io.libp2p.core.dsl.*;
 import io.libp2p.core.multiformats.*;
 import io.libp2p.protocol.*;
-import io.libp2p.transport.quic.*;
 import kotlin.*;
 import org.junit.jupiter.api.*;
 
@@ -16,9 +15,9 @@ import java.io.*;
 import java.net.*;
 import java.util.concurrent.*;
 
-public class QuicPingTestJava {
+public class QuicKuboTestJava {
     @Test
-    @Disabled
+//    @Disabled
     void ping() throws Exception {
         PeerId peerId = PeerId.fromBase58(getKuboPeerId());
 

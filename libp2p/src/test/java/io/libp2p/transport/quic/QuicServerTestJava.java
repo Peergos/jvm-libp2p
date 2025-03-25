@@ -7,11 +7,7 @@ import io.libp2p.core.StreamPromise;
 import io.libp2p.core.crypto.*;
 import io.libp2p.core.dsl.*;
 import io.libp2p.core.multiformats.*;
-import io.libp2p.core.mux.*;
 import io.libp2p.protocol.*;
-import io.libp2p.security.tls.*;
-import io.libp2p.transport.quic.*;
-import io.libp2p.transport.tcp.*;
 import kotlin.*;
 import org.junit.jupiter.api.*;
 
@@ -19,8 +15,8 @@ import java.util.concurrent.*;
 
 public class QuicServerTestJava {
     @Test
-    @Disabled
-    void ping() throws Exception {
+//    @Disabled
+    void pingJava() throws Exception {
         String localListenAddress = "/ip4/127.0.0.1/udp/40002/quic";
 //        String localListenAddress = "/ip4/127.0.0.1/tcp/40002";
 
