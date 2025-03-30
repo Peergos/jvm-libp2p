@@ -230,23 +230,15 @@ class QuicTransport(
                     println("creating outbound connection stream")
                     it.get().createStream(
                         QuicStreamType.BIDIRECTIONAL,
-                        object : ChannelHandler {
+                        object : ChannelInboundHandlerAdapter() {
                             override fun handlerAdded(ctx: ChannelHandlerContext?) {
                                 val stream = createStream(ctx!!.channel(), connection)
                                 println("outbound stream handler added " + ctx.channel())
+                                ctx.channel().pipeline().addLast(QuicStreamFrameDecoder())
+                                ctx.channel().pipeline().addLast(QuicStreamFrameEncoder())
                                 ctx.channel().attr(STREAM).set(stream)
                                 val streamHandler = multi.toStreamHandler()
                                 streamHandler.handleStream(stream).forward(controller).apply { streamFut.complete(stream) }
-                            }
-
-                            override fun handlerRemoved(ctx: ChannelHandlerContext?) {
-                                println("outbound stream handler removed")
-                                TODO("Not yet implemented handler removal")
-                            }
-
-                            @Deprecated("Deprecated in Java")
-                            override fun exceptionCaught(ctx: ChannelHandlerContext?, cause: Throwable?) {
-                                TODO("Not yet implemented exception caught")
                             }
                         }
                     )
@@ -271,6 +263,22 @@ class QuicTransport(
             res.complete(connection)
         }
         return res
+    }
+
+    class QuicStreamFrameDecoder: ChannelInboundHandlerAdapter() {
+        override fun channelRead(ctx: ChannelHandlerContext, msg: Any) {
+            if (msg is QuicStreamFrame) {
+                ctx.fireChannelRead(msg.content())
+            }
+        }
+    }
+
+    class QuicStreamFrameEncoder: ChannelOutboundHandlerAdapter() {
+        override fun write(ctx: ChannelHandlerContext, msg: Any?, promise: ChannelPromise?) {
+            if (msg is ByteBuf) {
+                ctx.channel().writeAndFlush(DefaultQuicStreamFrame(msg, false))
+            }
+        }
     }
 
     private fun registerChannel(ch: Channel) {
@@ -360,6 +368,7 @@ class QuicTransport(
         override fun channelRegistered(ctx: ChannelHandlerContext?) {
             println("server side init stream")
             val connection = ctx!!.channel().attr(CONNECTION).get()
+            ctx.channel().pipeline().addLast(QuicStreamFrameDecoder())
             val stream = createStream(ctx.channel(), connection)
             val streamHandler = handler.createMultistream(protocols).toStreamHandler()
             streamHandler.handleStream(stream)
