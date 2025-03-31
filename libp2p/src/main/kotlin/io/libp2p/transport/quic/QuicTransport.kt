@@ -30,6 +30,7 @@ import io.netty.channel.epoll.Epoll
 import io.netty.channel.epoll.EpollDatagramChannel
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.nio.NioDatagramChannel
+import io.netty.handler.codec.MessageToMessageEncoder
 import io.netty.handler.ssl.ClientAuth
 import io.netty.incubator.codec.quic.*
 import java.net.*
@@ -233,9 +234,8 @@ class QuicTransport(
                         object : ChannelInboundHandlerAdapter() {
                             override fun handlerAdded(ctx: ChannelHandlerContext?) {
                                 val stream = createStream(ctx!!.channel(), connection)
-                                println("outbound stream handler added " + ctx.channel())
+                                println("outbound stream handler added to " + ctx.channel())
                                 ctx.channel().pipeline().addLast(QuicStreamFrameDecoder())
-                                ctx.channel().pipeline().addLast(QuicStreamFrameEncoder())
                                 ctx.channel().attr(STREAM).set(stream)
                                 val streamHandler = multi.toStreamHandler()
                                 streamHandler.handleStream(stream).forward(controller).apply { streamFut.complete(stream) }
@@ -269,14 +269,6 @@ class QuicTransport(
         override fun channelRead(ctx: ChannelHandlerContext, msg: Any) {
             if (msg is QuicStreamFrame) {
                 ctx.fireChannelRead(msg.content())
-            }
-        }
-    }
-
-    class QuicStreamFrameEncoder: ChannelOutboundHandlerAdapter() {
-        override fun write(ctx: ChannelHandlerContext, msg: Any?, promise: ChannelPromise?) {
-            if (msg is ByteBuf) {
-                ctx.channel().writeAndFlush(DefaultQuicStreamFrame(msg, false))
             }
         }
     }
