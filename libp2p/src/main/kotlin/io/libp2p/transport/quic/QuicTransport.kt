@@ -374,12 +374,6 @@ class QuicTransport(
                     preHandler?.also { it.visit(connection) }
                     connHandler.handleConnection(connection)
                 }
-
-                override fun channelRead(ctx: ChannelHandlerContext, msg: Any) {
-                    super.channelRead(ctx, msg)
-                    ctx.fireChannelRead(msg)
-                    println("inbound connection read " + msg)
-                }
             })
             .initialMaxData(1024)
 //            .initialMaxStreamDataUnidirectional(1024)
