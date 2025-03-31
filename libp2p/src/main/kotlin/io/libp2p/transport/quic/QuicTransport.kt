@@ -241,7 +241,7 @@ class QuicTransport(
                                 println("outbound stream handler added to " + ctx.channel())
 //                                ctx.fireChannelWritabilityChanged()
                                 println("outbound stream writable: " + ctx.channel().isWritable)
-                                ctx.channel().pipeline().addLast(QuicStreamFrameDecoder())
+//                                ctx.channel().pipeline().addLast(QuicStreamFrameDecoder())
                                 ctx.channel().attr(STREAM).set(stream)
                                 val streamHandler = multi.toStreamHandler()
                                 streamHandler.handleStream(stream).forward(controller).apply { streamFut.complete(stream) }
@@ -263,7 +263,7 @@ class QuicTransport(
                                 super.channelWritabilityChanged(ctx)
                                 val stream = createStream(ctx!!.channel(), connection)
                                 println("outbound stream writable: " + ctx.channel().isWritable)
-                                ctx.channel().pipeline().addLast(QuicStreamFrameDecoder())
+//                                ctx.channel().pipeline().addLast(QuicStreamFrameDecoder())
                                 ctx.channel().attr(STREAM).set(stream)
                                 val streamHandler = multi.toStreamHandler()
                                 streamHandler.handleStream(stream).forward(controller).apply { streamFut.complete(stream) }
@@ -377,6 +377,7 @@ class QuicTransport(
 
                 override fun channelRead(ctx: ChannelHandlerContext, msg: Any) {
                     super.channelRead(ctx, msg)
+                    ctx.fireChannelRead(msg)
                     println("inbound connection read " + msg)
                 }
             })
@@ -395,7 +396,7 @@ class QuicTransport(
         override fun channelRegistered(ctx: ChannelHandlerContext?) {
             println("server side init stream")
             val connection = ctx!!.channel().parent().attr(CONNECTION).get()
-            ctx.channel().pipeline().addLast(QuicStreamFrameDecoder())
+//            ctx.channel().pipeline().addLast(QuicStreamFrameDecoder())
             val stream = createStream(ctx.channel(), connection)
             val streamHandler = handler.createMultistream(protocols).toStreamHandler()
             streamHandler.handleStream(stream)
