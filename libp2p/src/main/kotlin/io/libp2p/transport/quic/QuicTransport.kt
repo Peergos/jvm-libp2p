@@ -185,6 +185,10 @@ class QuicTransport(
             .sslEngineProvider({ q -> sslContext.newEngine(q.alloc()) })
             .maxIdleTimeout(15000, TimeUnit.MILLISECONDS)
             .sslTaskExecutor(workerGroup)
+            .initialMaxData(1024)
+            .initialMaxStreamsBidirectional(1024)
+            .initialMaxStreamDataBidirectionalRemote(1024)
+            .initialMaxStreamDataBidirectionalLocal(1024)
             .build()
 
         val connFuture = QuicChannel.newBootstrap(
@@ -366,6 +370,7 @@ class QuicTransport(
                     super.channelActive(ctx)
                     println("inbound connection active")
                     val connection = ConnectionOverNetty(ctx.channel(), this@QuicTransport, false)
+                    ctx.channel().attr(CONNECTION).set(connection)
                     preHandler?.also { it.visit(connection) }
                     connHandler.handleConnection(connection)
                 }
@@ -389,7 +394,7 @@ class QuicTransport(
                                 val protocols: List<ProtocolBinding<*>>) : ChannelInboundHandlerAdapter() {
         override fun channelRegistered(ctx: ChannelHandlerContext?) {
             println("server side init stream")
-            val connection = ctx!!.channel().attr(CONNECTION).get()
+            val connection = ctx!!.channel().parent().attr(CONNECTION).get()
             ctx.channel().pipeline().addLast(QuicStreamFrameDecoder())
             val stream = createStream(ctx.channel(), connection)
             val streamHandler = handler.createMultistream(protocols).toStreamHandler()
