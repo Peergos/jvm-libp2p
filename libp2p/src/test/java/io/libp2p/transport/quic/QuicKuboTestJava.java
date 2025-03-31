@@ -44,7 +44,7 @@ public class QuicKuboTestJava {
         PingController pingCtr = ping.getController().get(5, TimeUnit.SECONDS);
         System.out.println("Ping controller created");
 
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 1000; i++) {
             long latency = pingCtr.ping().get(1, TimeUnit.SECONDS);
             System.out.println("Ping is " + latency);
         }

@@ -204,18 +204,9 @@ class QuicTransport(
             .option(ChannelOption.ALLOCATOR, allocator)
             .remoteAddress(fromMultiaddr(addr))
 //            .handler(connHandler)
-            .streamHandler(object : ChannelHandler {
+            .streamHandler(object : ChannelInboundHandlerAdapter() {
                 override fun handlerAdded(ctx: ChannelHandlerContext?) {
-                    println("incoming stream opened on outbound connection")
-                }
-
-                override fun handlerRemoved(ctx: ChannelHandlerContext?) {
-                    TODO("Not yet implemented")
-                }
-
-                @Deprecated("Deprecated in Java")
-                override fun exceptionCaught(ctx: ChannelHandlerContext?, cause: Throwable?) {
-                    TODO("Not yet implemented")
+                    println("Incoming stream on outgoing quic conneciton")
                 }
             })
             .connect()
