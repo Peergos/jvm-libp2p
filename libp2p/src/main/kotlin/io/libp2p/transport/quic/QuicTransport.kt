@@ -200,7 +200,7 @@ class QuicTransport(
                 .channel()
         )
             .streamOption(ChannelOption.ALLOCATOR, allocator)
-            .option(ChannelOption.AUTO_READ, false)
+            .option(ChannelOption.AUTO_READ, true)
             .option(ChannelOption.ALLOCATOR, allocator)
             .remoteAddress(fromMultiaddr(addr))
 //            .handler(connHandler)
@@ -239,31 +239,7 @@ class QuicTransport(
                             override fun handlerAdded(ctx: ChannelHandlerContext?) {
                                 val stream = createStream(ctx!!.channel(), connection)
                                 println("outbound stream handler added to " + ctx.channel())
-//                                ctx.fireChannelWritabilityChanged()
                                 println("outbound stream writable: " + ctx.channel().isWritable)
-//                                ctx.channel().pipeline().addLast(QuicStreamFrameDecoder())
-                                ctx.channel().attr(STREAM).set(stream)
-                                val streamHandler = multi.toStreamHandler()
-                                streamHandler.handleStream(stream).forward(controller).apply { streamFut.complete(stream) }
-                            }
-
-//                            override fun channelActive(ctx: ChannelHandlerContext) {
-//                                super.channelActive(ctx)
-//                                val stream = createStream(ctx.channel(), connection)
-//                                println("outbound active stream handler added to " + ctx.channel())
-////                                ctx.fireChannelWritabilityChanged()
-//                                println("outbound active stream writable: " + ctx.channel().isWritable)
-//                                ctx.channel().pipeline().addLast(QuicStreamFrameDecoder())
-//                                ctx.channel().attr(STREAM).set(stream)
-//                                val streamHandler = multi.toStreamHandler()
-//                                streamHandler.handleStream(stream).forward(controller).apply { streamFut.complete(stream) }
-//                            }
-
-                            override fun channelWritabilityChanged(ctx: ChannelHandlerContext?) {
-                                super.channelWritabilityChanged(ctx)
-                                val stream = createStream(ctx!!.channel(), connection)
-                                println("outbound stream writable: " + ctx.channel().isWritable)
-//                                ctx.channel().pipeline().addLast(QuicStreamFrameDecoder())
                                 ctx.channel().attr(STREAM).set(stream)
                                 val streamHandler = multi.toStreamHandler()
                                 streamHandler.handleStream(stream).forward(controller).apply { streamFut.complete(stream) }
@@ -291,14 +267,6 @@ class QuicTransport(
             res.complete(connection)
         }
         return res
-    }
-
-    class QuicStreamFrameDecoder: ChannelInboundHandlerAdapter() {
-        override fun channelRead(ctx: ChannelHandlerContext, msg: Any) {
-            if (msg is QuicStreamFrame) {
-                ctx.fireChannelRead(msg.content())
-            }
-        }
     }
 
     private fun registerChannel(ch: Channel) {
@@ -356,7 +324,6 @@ class QuicTransport(
         val sslContext = quicSslContext(null, Libp2pTrustManager(Optional.empty()))
         return QuicServerCodecBuilder()
             .sslEngineProvider({ q -> sslContext.newEngine(q.alloc()) })
-            .initialMaxStreamsBidirectional(10)
             .maxIdleTimeout(5000, TimeUnit.MILLISECONDS)
             .sslTaskExecutor(workerGroup)
             .tokenHandler(NoTokenHandler())
