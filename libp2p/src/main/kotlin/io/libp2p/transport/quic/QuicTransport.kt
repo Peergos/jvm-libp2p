@@ -186,7 +186,7 @@ class QuicTransport(
             .maxIdleTimeout(15000, TimeUnit.MILLISECONDS)
             .sslTaskExecutor(workerGroup)
             .initialMaxData(1024)
-            .initialMaxStreamsBidirectional(1024)
+            .initialMaxStreamsBidirectional(16)
             .initialMaxStreamDataBidirectionalRemote(1024)
             .initialMaxStreamDataBidirectionalLocal(1024)
             .build()
@@ -206,7 +206,7 @@ class QuicTransport(
 //            .handler(connHandler)
             .streamHandler(object : ChannelInboundHandlerAdapter() {
                 override fun handlerAdded(ctx: ChannelHandlerContext?) {
-                    println("Incoming stream on outgoing quic conneciton")
+                    println("Incoming stream on outgoing quic connection")
                 }
             })
             .connect()
@@ -223,14 +223,11 @@ class QuicTransport(
 
                     val controller = CompletableFuture<T>()
                     val streamFut = CompletableFuture<Stream>()
-                    println("creating outbound connection stream")
                     it.get().createStream(
                         QuicStreamType.BIDIRECTIONAL,
                         object : ChannelInboundHandlerAdapter() {
                             override fun handlerAdded(ctx: ChannelHandlerContext?) {
                                 val stream = createStream(ctx!!.channel(), connection)
-                                println("outbound stream handler added to " + ctx.channel())
-                                println("outbound stream writable: " + ctx.channel().isWritable)
                                 ctx.channel().attr(STREAM).set(stream)
                                 val streamHandler = multi.toStreamHandler()
                                 streamHandler.handleStream(stream).forward(controller).apply { streamFut.complete(stream) }
@@ -306,6 +303,18 @@ class QuicTransport(
             else
                 QuicSslContextBuilder.forServer(javaPrivateKey, null, cert).clientAuth(ClientAuth.REQUIRE)
             )
+            .option(BoringSSLContextOption.GROUPS, arrayOf("x25519"))
+            .option(BoringSSLContextOption.SIGNATURE_ALGORITHMS, arrayOf(
+                "ed25519",
+                "ecdsa_secp256r1_sha256",
+                "rsa_pkcs1_sha256",
+                "rsa_pss_rsae_sha256",
+                "ecdsa_secp384r1_sha384",
+                "rsa_pkcs1_sha384",
+                "rsa_pss_rsae_sha384",
+                "rsa_pss_rsae_sha512",
+                "rsa_pkcs1_sha512",
+            ))
             .trustManager(trustManager)
             .applicationProtocols("libp2p")
             .build()
@@ -319,14 +328,8 @@ class QuicTransport(
             .sslTaskExecutor(workerGroup)
             .tokenHandler(NoTokenHandler())
             .handler(object : ChannelInboundHandlerAdapter() {
-                override fun channelRegistered(ctx: ChannelHandlerContext?) {
-                    super.channelRegistered(ctx)
-                    println("inbound connection registered")
-                }
-
                 override fun channelActive(ctx: ChannelHandlerContext) {
                     super.channelActive(ctx)
-                    println("inbound connection active")
                     val connection = ConnectionOverNetty(ctx.channel(), this@QuicTransport, false)
                     ctx.channel().attr(CONNECTION).set(connection)
                     preHandler?.also { it.visit(connection) }
@@ -336,7 +339,7 @@ class QuicTransport(
             .initialMaxData(1024)
 //            .initialMaxStreamDataUnidirectional(1024)
 //            .initialMaxStreamsUnidirectional(1024)
-            .initialMaxStreamsBidirectional(1024)
+            .initialMaxStreamsBidirectional(16)
             .initialMaxStreamDataBidirectionalRemote(1024)
             .initialMaxStreamDataBidirectionalLocal(1024)
             .streamHandler(InboundStreamHandler(incomingMultistreamProtocol, protocols))
@@ -346,16 +349,14 @@ class QuicTransport(
     class InboundStreamHandler(val handler: MultistreamProtocol,
                                 val protocols: List<ProtocolBinding<*>>) : ChannelInboundHandlerAdapter() {
         override fun channelRegistered(ctx: ChannelHandlerContext?) {
-            println("server side init stream")
             val connection = ctx!!.channel().parent().attr(CONNECTION).get()
-//            ctx.channel().pipeline().addLast(QuicStreamFrameDecoder())
             val stream = createStream(ctx.channel(), connection)
             val streamHandler = handler.createMultistream(protocols).toStreamHandler()
             streamHandler.handleStream(stream)
         }
     }
 
-    class NoTokenHandler() : QuicTokenHandler {
+    class NoTokenHandler : QuicTokenHandler {
         override fun writeToken(out: ByteBuf?, dcid: ByteBuf?, address: InetSocketAddress?): Boolean {
             return false
         }
