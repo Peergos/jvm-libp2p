@@ -206,7 +206,9 @@ class QuicTransport(
 //            .handler(connHandler)
             .streamHandler(object : ChannelInboundHandlerAdapter() {
                 override fun handlerAdded(ctx: ChannelHandlerContext?) {
-                    println("Incoming stream on outgoing quic connection")
+                    val connection = ctx!!.channel().parent().attr(CONNECTION).get() as Connection
+                    preHandler?.also { it.visit(connection) }
+                    connHandler.handleConnection(connection)
                 }
             })
             .connect()
