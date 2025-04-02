@@ -80,8 +80,8 @@ class QuicTransport(
             return QuicTransport(k, "ECDSA", p)
         }
 
-        private fun createStream(channel: Channel, connection: Connection): Stream {
-            val stream = StreamOverNetty(channel, connection, true)
+        private fun createStream(channel: Channel, connection: Connection, initiator: Boolean): Stream {
+            val stream = StreamOverNetty(channel, connection, initiator)
             channel.attr(STREAM).set(stream)
             return stream
         }
@@ -229,7 +229,7 @@ class QuicTransport(
                         QuicStreamType.BIDIRECTIONAL,
                         object : ChannelInboundHandlerAdapter() {
                             override fun handlerAdded(ctx: ChannelHandlerContext?) {
-                                val stream = createStream(ctx!!.channel(), connection)
+                                val stream = createStream(ctx!!.channel(), connection, true)
                                 ctx.channel().attr(STREAM).set(stream)
                                 val streamHandler = multi.toStreamHandler()
                                 streamHandler.handleStream(stream).forward(controller).apply { streamFut.complete(stream) }
@@ -329,18 +329,15 @@ class QuicTransport(
             .maxIdleTimeout(5000, TimeUnit.MILLISECONDS)
             .sslTaskExecutor(workerGroup)
             .tokenHandler(NoTokenHandler())
-            .handler(object : ChannelInboundHandlerAdapter() {
-                override fun channelActive(ctx: ChannelHandlerContext) {
-                    super.channelActive(ctx)
-                    val connection = ConnectionOverNetty(ctx.channel(), this@QuicTransport, false)
-                    ctx.channel().attr(CONNECTION).set(connection)
+            .handler(object : ChannelInitializer<Channel>() {
+                override fun initChannel(ch: Channel) {
+                    val connection = ConnectionOverNetty(ch, this@QuicTransport, false)
+                    ch.attr(CONNECTION).set(connection)
                     preHandler?.also { it.visit(connection) }
                     connHandler.handleConnection(connection)
                 }
             })
             .initialMaxData(1024)
-//            .initialMaxStreamDataUnidirectional(1024)
-//            .initialMaxStreamsUnidirectional(1024)
             .initialMaxStreamsBidirectional(16)
             .initialMaxStreamDataBidirectionalRemote(1024)
             .initialMaxStreamDataBidirectionalLocal(1024)
@@ -349,10 +346,10 @@ class QuicTransport(
     }
 
     class InboundStreamHandler(val handler: MultistreamProtocol,
-                                val protocols: List<ProtocolBinding<*>>) : ChannelInboundHandlerAdapter() {
-        override fun channelRegistered(ctx: ChannelHandlerContext?) {
-            val connection = ctx!!.channel().parent().attr(CONNECTION).get()
-            val stream = createStream(ctx.channel(), connection)
+                                val protocols: List<ProtocolBinding<*>>) : ChannelInitializer<Channel>() {
+        override fun initChannel(ch: Channel) {
+            val connection = ch.parent().attr(CONNECTION).get()
+            val stream = createStream(ch, connection, false)
             val streamHandler = handler.createMultistream(protocols).toStreamHandler()
             streamHandler.handleStream(stream)
         }
