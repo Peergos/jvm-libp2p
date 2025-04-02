@@ -84,9 +84,8 @@ public class HostBuilder {
                     PrivKey peerId = identity.getFactory().invoke();
                     identity.setFactory(() -> peerId);
 
-                    secureTransports_.forEach(t ->
-                            b.getTransports().add(c ->
-                                    t.apply(identity.getFactory().invoke(), protocols_))
+                    secureTransports_.forEach(st ->
+                            b.getSecureTransports().add(p -> u -> st.apply(identity.getFactory().invoke(), (List<ProtocolBinding<?>>) p))
                     );
                     transports_.forEach(t ->
                             b.getTransports().add(t::apply)
