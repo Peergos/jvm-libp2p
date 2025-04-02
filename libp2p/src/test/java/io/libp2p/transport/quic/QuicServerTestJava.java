@@ -8,6 +8,7 @@ import io.libp2p.core.crypto.*;
 import io.libp2p.core.dsl.*;
 import io.libp2p.core.multiformats.*;
 import io.libp2p.protocol.*;
+import io.netty.handler.logging.LogLevel;
 import kotlin.*;
 import org.junit.jupiter.api.*;
 
@@ -18,13 +19,14 @@ public class QuicServerTestJava {
 //    @Disabled
     void pingJava() throws Exception {
         String localListenAddress = "/ip4/127.0.0.1/udp/40002/quic";
-//        String localListenAddress = "/ip4/127.0.0.1/tcp/40002";
 
         Host clientHost = new HostBuilder()
+//                .secureTransport(QuicTransport::Ed25519)
                 .secureTransport(QuicTransport::Ecdsa)
                 .build();
 
         Host serverHost = new HostBuilder()
+//                .secureTransport(QuicTransport::Ed25519)
                 .secureTransport(QuicTransport::Ecdsa)
                 .protocol(new Ping())
                 .listen(localListenAddress)
@@ -51,7 +53,7 @@ public class QuicServerTestJava {
                         serverHost.getPeerId(),
                         new Multiaddr(localListenAddress)
                 ).thenApply(
-                        it -> it.muxerSession().createStream(new Ping())
+                        it -> it.muxerSession().createStream(new Ping(500))
                 )
                 .get(5000, TimeUnit.SECONDS);
 
@@ -61,7 +63,7 @@ public class QuicServerTestJava {
         PingController pingCtr = controller.get(5000, TimeUnit.SECONDS);
         System.out.println("Ping controller created");
 
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 1000; i++) {
             long latency = pingCtr.ping().get(1, TimeUnit.SECONDS);
             System.out.println("Ping is " + latency);
         }
@@ -70,6 +72,126 @@ public class QuicServerTestJava {
 
         Assertions.assertThrows(ExecutionException.class, () ->
                 pingCtr.ping().get(5, TimeUnit.SECONDS));
+
+        clientHost.stop().get(5, TimeUnit.SECONDS);
+        System.out.println("Client stopped");
+        serverHost.stop().get(5, TimeUnit.SECONDS);
+        System.out.println("Server stopped");
+    }
+
+    @Test
+    void largeBlob() throws Exception {
+        int blobSize = 1024 * 1024;
+        String localListenAddress = "/ip4/127.0.0.1/udp/40002/quic";
+
+        Host clientHost =
+                new HostBuilder()
+                        .secureTransport(QuicTransport::Ecdsa)
+                        .builderModifier(
+                                b -> b.getDebug().getMuxFramesHandler().addCompactLogger(LogLevel.ERROR, "client"))
+                        .build();
+
+        Host serverHost =
+                new HostBuilder()
+                        .secureTransport(QuicTransport::Ecdsa)
+                        .protocol(new Blob(blobSize))
+                        .listen(localListenAddress)
+                        .builderModifier(
+                                b -> b.getDebug().getMuxFramesHandler().addCompactLogger(LogLevel.ERROR, "server"))
+                        .build();
+
+        CompletableFuture<Void> clientStarted = clientHost.start();
+        CompletableFuture<Void> serverStarted = serverHost.start();
+        clientStarted.get(5, TimeUnit.SECONDS);
+        System.out.println("Client started");
+        serverStarted.get(5, TimeUnit.SECONDS);
+        System.out.println("Server started");
+
+        Assertions.assertEquals(0, clientHost.listenAddresses().size());
+        Assertions.assertEquals(1, serverHost.listenAddresses().size());
+        Assertions.assertEquals(
+                localListenAddress + "/p2p/" + serverHost.getPeerId(),
+                serverHost.listenAddresses().get(0).toString());
+
+        StreamPromise<BlobController> blob =
+                clientHost
+                        .getNetwork()
+                        .connect(serverHost.getPeerId(), new Multiaddr(localListenAddress))
+                        .thenApply(it -> it.muxerSession().createStream(new Blob(blobSize)))
+                        .join();
+
+        Stream blobStream = blob.getStream().get(5, TimeUnit.SECONDS);
+        System.out.println("Blob stream created");
+        BlobController blobCtr = blob.getController().get(5, TimeUnit.SECONDS);
+        System.out.println("Blob controller created");
+
+        for (int i = 0; i < 10; i++) {
+            long latency = blobCtr.blob().join();
+            System.out.println("Blob round trip is " + latency);
+        }
+        blobStream.close().get(5, TimeUnit.SECONDS);
+        System.out.println("Blob stream closed");
+
+        Assertions.assertThrows(
+                ExecutionException.class, () -> blobCtr.blob().get(5, TimeUnit.SECONDS));
+
+        clientHost.stop().get(5, TimeUnit.SECONDS);
+        System.out.println("Client stopped");
+        serverHost.stop().get(5, TimeUnit.SECONDS);
+        System.out.println("Server stopped");
+    }
+
+    @Test
+    void addPingAfterHostStart() throws Exception {
+        String localListenAddress = "/ip4/127.0.0.1/udp/40002/quic";
+
+        Host clientHost =
+                new HostBuilder()
+                        .secureTransport(QuicTransport::Ecdsa)
+                        .build();
+
+        Host serverHost =
+                new HostBuilder()
+                        .secureTransport(QuicTransport::Ecdsa)
+                        .listen(localListenAddress)
+                        .build();
+
+        CompletableFuture<Void> clientStarted = clientHost.start();
+        CompletableFuture<Void> serverStarted = serverHost.start();
+        clientStarted.get(5, TimeUnit.SECONDS);
+        System.out.println("Client started");
+        serverStarted.get(5, TimeUnit.SECONDS);
+        System.out.println("Server started");
+
+        Assertions.assertEquals(0, clientHost.listenAddresses().size());
+        Assertions.assertEquals(1, serverHost.listenAddresses().size());
+        Assertions.assertEquals(
+                localListenAddress + "/p2p/" + serverHost.getPeerId(),
+                serverHost.listenAddresses().get(0).toString());
+
+        serverHost.addProtocolHandler(new Ping());
+
+        StreamPromise<PingController> ping =
+                clientHost
+                        .getNetwork()
+                        .connect(serverHost.getPeerId(), new Multiaddr(localListenAddress))
+                        .thenApply(it -> it.muxerSession().createStream(new Ping()))
+                        .get(5, TimeUnit.SECONDS);
+
+        Stream pingStream = ping.getStream().get(5, TimeUnit.SECONDS);
+        System.out.println("Ping stream created");
+        PingController pingCtr = ping.getController().get(5, TimeUnit.SECONDS);
+        System.out.println("Ping controller created");
+
+        for (int i = 0; i < 10; i++) {
+            long latency = pingCtr.ping().get(1, TimeUnit.SECONDS);
+            System.out.println("Ping is " + latency);
+        }
+        pingStream.close().get(5, TimeUnit.SECONDS);
+        System.out.println("Ping stream closed");
+
+        Assertions.assertThrows(
+                ExecutionException.class, () -> pingCtr.ping().get(5, TimeUnit.SECONDS));
 
         clientHost.stop().get(5, TimeUnit.SECONDS);
         System.out.println("Client stopped");

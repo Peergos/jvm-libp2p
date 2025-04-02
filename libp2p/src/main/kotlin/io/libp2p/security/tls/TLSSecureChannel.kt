@@ -227,11 +227,9 @@ class Libp2pTrustManager(private val expectedRemotePeer: Optional<PeerId>) : X50
         val claimedPeerId = verifyAndExtractPeerId(arrayOf(cert))
         if (expectedRemotePeer.map { ex -> ! ex.equals(claimedPeerId) }.orElse(false))
             throw InvalidRemotePubKey()
-        println("Trusted!")
     }
 
     override fun checkServerTrusted(certs: Array<out X509Certificate>?, authType: String?) {
-        println("Checking server cert...")
         checkClientTrusted(certs, authType)
     }
 

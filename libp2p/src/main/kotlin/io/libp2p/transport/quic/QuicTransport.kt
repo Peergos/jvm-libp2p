@@ -30,7 +30,6 @@ import io.netty.channel.epoll.Epoll
 import io.netty.channel.epoll.EpollDatagramChannel
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.nio.NioDatagramChannel
-import io.netty.handler.codec.MessageToMessageEncoder
 import io.netty.handler.ssl.ClientAuth
 import io.netty.incubator.codec.quic.*
 import java.net.*

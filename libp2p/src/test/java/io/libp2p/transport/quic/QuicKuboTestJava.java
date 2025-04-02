@@ -17,10 +17,12 @@ import java.util.concurrent.*;
 
 public class QuicKuboTestJava {
     @Test
-    void ping() throws Exception {
+//    @Disabled
+    void pingKubo() throws Exception {
         PeerId peerId = PeerId.fromBase58(getKuboPeerId());
 
         Host clientHost = new HostBuilder()
+//                .secureTransport(QuicTransport::Ed25519)
                 .secureTransport(QuicTransport::Ecdsa)
                 .build();
 
