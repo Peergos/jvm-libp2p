@@ -26,13 +26,14 @@ dependencies {
     implementation("org.bouncycastle:bcpkix-jdk18on")
     implementation("org.bouncycastle:bctls-jdk18on")
 
+    implementation("io.netty.incubator:netty-incubator-codec-native-quic::linux-x86_64")
+    implementation("io.netty.incubator:netty-incubator-codec-native-quic::linux-aarch_64")
+    implementation("io.netty.incubator:netty-incubator-codec-native-quic::osx-x86_64")
+    implementation("io.netty.incubator:netty-incubator-codec-native-quic::osx-aarch_64")
+    implementation("io.netty.incubator:netty-incubator-codec-native-quic::windows-x86_64")
+
     testImplementation(project(":tools:schedulers"))
 
-    testImplementation("io.netty.incubator:netty-incubator-codec-native-quic::linux-x86_64")
-    testImplementation("io.netty.incubator:netty-incubator-codec-native-quic::linux-aarch_64")
-    testImplementation("io.netty.incubator:netty-incubator-codec-native-quic::osx-x86_64")
-    testImplementation("io.netty.incubator:netty-incubator-codec-native-quic::osx-aarch_64")
-    testImplementation("io.netty.incubator:netty-incubator-codec-native-quic::windows-x86_64")
 
     testFixturesApi("org.apache.logging.log4j:log4j-core")
     testFixturesImplementation(project(":tools:schedulers"))
