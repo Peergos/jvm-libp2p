@@ -28,8 +28,10 @@ import io.netty.buffer.AdaptiveByteBufAllocator
 import io.netty.buffer.ByteBuf
 import io.netty.channel.*
 import io.netty.channel.nio.NioIoHandler
+import io.netty.channel.socket.nio.NioChannelOption
 import io.netty.channel.socket.nio.NioDatagramChannel
 import io.netty.handler.codec.quic.*
+import java.net.StandardSocketOptions
 import io.netty.handler.ssl.ClientAuth
 import org.slf4j.LoggerFactory
 import java.net.Inet6Address
@@ -155,6 +157,18 @@ class QuicTransport(
     /** Pending hole punches keyed by the remote address we are trying to reach. */
     private val pendingHolePunches = ConcurrentHashMap<InetSocketAddress, PendingHolePunch>()
 
+    private val SO_REUSEPORT: ChannelOption<Boolean> = NioChannelOption.of(StandardSocketOptions.SO_REUSEPORT)
+
+    // SO_REUSEPORT lets a dial socket share the listener's port; unsupported on some OSes (e.g. Windows),
+    // where we bind listeners normally and dial from ephemeral ports.
+    // (go-libp2p instead shares one UDP socket for listen+dial via quic-go's connection-id demux; netty's
+    // QUIC codec can't run a client and server codec on one socket, so SO_REUSEPORT is our only option.)
+    private val soReusePortSupported: Boolean = try {
+        java.nio.channels.DatagramChannel.open().use { it.supportedOptions().contains(StandardSocketOptions.SO_REUSEPORT) }
+    } catch (e: Exception) {
+        false
+    }
+
     private var workerGroup by lazyVar {
         MultiThreadIoEventLoopGroup(NioIoHandler.newFactory())
     }
@@ -191,6 +205,9 @@ class QuicTransport(
     private var server by lazyVar {
         Bootstrap().group(workerGroup)
             .channel(NioDatagramChannel::class.java)
+            // allow a dial socket to reuse the listener's port so outbound connections originate from
+            // our listen port (peers then observe our listen socket's external mapping)
+            .apply { if (soReusePortSupported) option(SO_REUSEPORT, true) }
     }
 
     override val activeListeners: Int
@@ -279,7 +296,8 @@ class QuicTransport(
 
         val trustManager = Libp2pTrustManager(Optional.ofNullable(addr.getPeerId()))
         val sslContext = quicSslContext(true, trustManager)
-        val requestsHandler = QuicClientCodecBuilder()
+        // The QUIC client codec is a non-@Sharable handler, so each socket attempt needs its own.
+        fun newClientCodec() = QuicClientCodecBuilder()
             .sslEngineProvider { q -> sslContext.newEngine(q.alloc()) }
             .sslTaskExecutor(workerGroup)
             .maxIdleTimeout(config.idleTimeout.toMillis(), TimeUnit.MILLISECONDS)
@@ -295,16 +313,39 @@ class QuicTransport(
 
         val targetAddr = fromMultiaddr(addr) as InetSocketAddress
 
-        // Always bind the dial socket to an ephemeral port. We deliberately do NOT try to reuse an
-        // active listener's port: two UDP sockets cannot share a port without SO_REUSEPORT, and
-        // even with it the kernel may deliver a dial's response packets to the listener socket
-        // (which runs a QUIC *server* codec), silently breaking the handshake. NAT-consistent
-        // dialing for hole punching is handled separately by dialAsListener, which reuses the
-        // listener socket directly.
-        val quicConnFuture: CompletableFuture<QuicChannel> = client.clone()
-            .handler(requestsHandler)
-            .bind(InetSocketAddress(0))
-            .toCompletableFuture()
+        // An ephemeral-source-port dial: bind to port 0 and let the kernel pick. Peers then see a
+        // throwaway source port in identify's observedAddr, useless for NAT traversal.
+        fun dialFromEphemeralPort(): CompletableFuture<Channel> =
+            client.clone().handler(newClientCodec()).bind(InetSocketAddress(0)).toCompletableFuture()
+
+        // Reuse the listener's port for the dial socket (via SO_REUSEPORT) so our outbound connections
+        // originate from our listen port. Peers then report our listen socket's external mapping in
+        // identify's observedAddr, which is what AutoNAT/DCUtR need for a NATed node.
+        //
+        // We UDP-connect the reused socket to the remote so the kernel routes this remote's response
+        // packets to the dial socket rather than to the SO_REUSEPORT listener (whose server codec would
+        // drop them). The QUIC codec intercepts channel-level connect(), so we connect with a no-op
+        // handler first and install the codec afterwards.
+        fun dialReusingListenPort(listenPort: Int): CompletableFuture<Channel> =
+            client.clone()
+                .handler(object : ChannelInboundHandlerAdapter() {})
+                .option(SO_REUSEPORT, true)
+                .localAddress(InetSocketAddress(listenPort))
+                .connect(targetAddr)
+                .toCompletableFuture()
+                .thenApply { ch -> ch.pipeline().addLast(newClientCodec()); ch }
+
+        val family = if (targetAddr.address is Inet6Address) AddressFamily.IPV6 else AddressFamily.IPV4
+        val listenPort = (listenerChannelsByFamily[family]?.localAddress() as? InetSocketAddress)?.port
+        val udpChannelFuture: CompletableFuture<Channel> = if (soReusePortSupported && listenPort != null && listenPort != 0)
+            // Fall back to an ephemeral source port if reuse fails: SO_REUSEPORT is unsupported on this
+            // OS (e.g. Windows), or an existing connection already occupies this (listenPort -> remote)
+            // 4-tuple so connect() would EADDRINUSE.
+            dialReusingListenPort(listenPort).exceptionallyCompose { dialFromEphemeralPort() }
+        else
+            dialFromEphemeralPort()
+
+        val quicConnFuture: CompletableFuture<QuicChannel> = udpChannelFuture
             .thenCompose { udpChannel ->
                 QuicChannel.newBootstrap(udpChannel)
                     .streamOption(ChannelOption.ALLOCATOR, allocator)
