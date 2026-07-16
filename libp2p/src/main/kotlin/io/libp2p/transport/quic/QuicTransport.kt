@@ -36,6 +36,7 @@ import io.netty.handler.ssl.ClientAuth
 import org.slf4j.LoggerFactory
 import java.net.Inet6Address
 import java.net.InetSocketAddress
+import java.net.PortUnreachableException
 import java.net.SocketAddress
 import java.util.*
 import java.util.concurrent.CompletableFuture
@@ -327,6 +328,10 @@ class QuicTransport(
         // packets to the dial socket rather than to the SO_REUSEPORT listener (whose server codec would
         // drop them). The QUIC codec intercepts channel-level connect(), so we connect with a no-op
         // handler first and install the codec afterwards.
+        //
+        // A connected UDP socket surfaces ICMP "port unreachable" as a PortUnreachableException (an
+        // unconnected socket silently drops it); swallow it so an unreachable peer just fails the QUIC
+        // handshake by timeout rather than firing an unhandled exception at the pipeline tail.
         fun dialReusingListenPort(listenPort: Int): CompletableFuture<Channel> =
             client.clone()
                 .handler(object : ChannelInboundHandlerAdapter() {})
@@ -334,7 +339,19 @@ class QuicTransport(
                 .localAddress(InetSocketAddress(listenPort))
                 .connect(targetAddr)
                 .toCompletableFuture()
-                .thenApply { ch -> ch.pipeline().addLast(newClientCodec()); ch }
+                .thenApply { ch ->
+                    ch.pipeline().addLast(newClientCodec())
+                    ch.pipeline().addLast(object : ChannelInboundHandlerAdapter() {
+                        @Deprecated("Deprecated in Java")
+                        override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
+                            if (cause is PortUnreachableException)
+                                logger.debug("Ignoring ICMP port-unreachable on QUIC dial to {}", targetAddr)
+                            else
+                                ctx.fireExceptionCaught(cause)
+                        }
+                    })
+                    ch
+                }
 
         val family = if (targetAddr.address is Inet6Address) AddressFamily.IPV6 else AddressFamily.IPV4
         val listenPort = (listenerChannelsByFamily[family]?.localAddress() as? InetSocketAddress)?.port
