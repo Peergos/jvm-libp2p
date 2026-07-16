@@ -166,6 +166,7 @@ class QuicTransport(
     private val soReusePortSupported: Boolean = try {
         java.nio.channels.DatagramChannel.open().use { it.supportedOptions().contains(StandardSocketOptions.SO_REUSEPORT) }
     } catch (e: Exception) {
+        logger.debug("Could not probe SO_REUSEPORT support, assuming unavailable", e)
         false
     }
 
@@ -340,8 +341,11 @@ class QuicTransport(
         val udpChannelFuture: CompletableFuture<Channel> = if (soReusePortSupported && listenPort != null && listenPort != 0)
             // Fall back to an ephemeral source port if reuse fails: SO_REUSEPORT is unsupported on this
             // OS (e.g. Windows), or an existing connection already occupies this (listenPort -> remote)
-            // 4-tuple so connect() would EADDRINUSE.
-            dialReusingListenPort(listenPort).exceptionallyCompose { dialFromEphemeralPort() }
+            // 4-tuple so connect() would EADDRINUSE. (handle+thenCompose rather than exceptionallyCompose,
+            // which is Java 12+ and this module targets Java 11.)
+            dialReusingListenPort(listenPort)
+                .handle { ch, ex -> if (ex != null) dialFromEphemeralPort() else CompletableFuture.completedFuture(ch) }
+                .thenCompose { it }
         else
             dialFromEphemeralPort()
 
