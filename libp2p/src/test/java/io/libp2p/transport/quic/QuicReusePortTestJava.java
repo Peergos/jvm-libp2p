@@ -15,7 +15,10 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-/** Prototype check: a QUIC dial from a listening host originates from the listen port (SO_REUSEPORT). */
+/**
+ * Prototype check: a QUIC dial from a listening host originates from the listen port
+ * (SO_REUSEPORT).
+ */
 public class QuicReusePortTestJava {
   private static int getPort() {
     return new Random().nextInt(20_000) + 10_000;
@@ -45,12 +48,16 @@ public class QuicReusePortTestJava {
       Connection conn =
           clientHost
               .getNetwork()
-              .connect(serverHost.getPeerId(), new Multiaddr("/ip4/127.0.0.1/udp/" + portB + "/quic-v1"))
+              .connect(
+                  serverHost.getPeerId(), new Multiaddr("/ip4/127.0.0.1/udp/" + portB + "/quic-v1"))
               .get(10, TimeUnit.SECONDS);
       System.out.println("dial local address = " + conn.localAddress());
       Assertions.assertTrue(
           conn.localAddress().toString().contains("/udp/" + portA + "/"),
-          "dial should originate from our QUIC listen port " + portA + " but was " + conn.localAddress());
+          "dial should originate from our QUIC listen port "
+              + portA
+              + " but was "
+              + conn.localAddress());
 
       // confirm the handshake completed and streams route correctly over the reused port
       PingController ping =

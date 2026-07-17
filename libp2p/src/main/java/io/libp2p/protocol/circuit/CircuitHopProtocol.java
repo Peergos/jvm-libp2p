@@ -297,15 +297,20 @@ public class CircuitHopProtocol extends ProtobufProtocolHandler<CircuitHopProtoc
               Optional<Reservation> res = manager.allowConnection(target, initiator);
               if (res.isPresent()) {
                 Reservation resv = res.get();
-                // Dial the target and open the STOP stream asynchronously, completing the reply off the
+                // Dial the target and open the STOP stream asynchronously, completing the reply off
+                // the
                 // event-loop thread (whenCompleteAsync). Two reasons this must not run inline here:
-                //  1. Deadlock: for QUIC every connection on a listener shares one event-loop thread, so
-                //     blocking (join) or writing inline would stall the very thread that must read the
+                //  1. Deadlock: for QUIC every connection on a listener shares one event-loop
+                // thread, so
+                //     blocking (join) or writing inline would stall the very thread that must read
+                // the
                 //     target's STOP reply, hanging until the 15s timeout fires (CONNECTION_FAILED).
                 //  2. Framing: getController() completes while multistream is still firing its
                 //     negotiation-success event, i.e. before the Negotiator removes its own
-                //     length-prepender; writing the STOP CONNECT inline would send it through both that
-                //     prepender and the protocol's, double-length-prefixing it so the target can't decode
+                //     length-prepender; writing the STOP CONNECT inline would send it through both
+                // that
+                //     prepender and the protocol's, double-length-prefixing it so the target can't
+                // decode
                 //     it. Deferring the write to a later task lets the pipeline settle first.
                 this.stop
                     .dial(us, target, resv.addrs)
@@ -338,7 +343,8 @@ public class CircuitHopProtocol extends ProtobufProtocolHandler<CircuitHopProtoc
                                       Stream toTarget = stop.getStream();
                                       Stream fromRequestor = stream;
                                       // remove hop and stop handlers from streams before proxying
-                                      fromRequestor.pushHandler(STREAM_CLEARER_NAME, new HopRemover());
+                                      fromRequestor.pushHandler(
+                                          STREAM_CLEARER_NAME, new HopRemover());
                                       toTarget.pushHandler(
                                           CircuitStopProtocol.STOP_REMOVER_NAME,
                                           new CircuitStopProtocol.StopRemover());
@@ -351,7 +357,8 @@ public class CircuitHopProtocol extends ProtobufProtocolHandler<CircuitHopProtoc
                                       if (resv.durationSeconds > 0) {
                                         fromRequestor.pushHandler(
                                             new TotalTimeoutHandler(
-                                                Duration.of(resv.durationSeconds, ChronoUnit.SECONDS)));
+                                                Duration.of(
+                                                    resv.durationSeconds, ChronoUnit.SECONDS)));
                                       }
                                       if (resv.maxBytes > 0) {
                                         toTarget.pushHandler(
@@ -360,7 +367,8 @@ public class CircuitHopProtocol extends ProtobufProtocolHandler<CircuitHopProtoc
                                       if (resv.durationSeconds > 0) {
                                         toTarget.pushHandler(
                                             new TotalTimeoutHandler(
-                                                Duration.of(resv.durationSeconds, ChronoUnit.SECONDS)));
+                                                Duration.of(
+                                                    resv.durationSeconds, ChronoUnit.SECONDS)));
                                       }
                                       fromRequestor.pushHandler(new ProxyHandler(toTarget));
                                       toTarget.pushHandler(new ProxyHandler(fromRequestor));

@@ -31,13 +31,13 @@ import io.netty.channel.nio.NioIoHandler
 import io.netty.channel.socket.nio.NioChannelOption
 import io.netty.channel.socket.nio.NioDatagramChannel
 import io.netty.handler.codec.quic.*
-import java.net.StandardSocketOptions
 import io.netty.handler.ssl.ClientAuth
 import org.slf4j.LoggerFactory
 import java.net.Inet6Address
 import java.net.InetSocketAddress
 import java.net.PortUnreachableException
 import java.net.SocketAddress
+import java.net.StandardSocketOptions
 import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
@@ -298,6 +298,7 @@ class QuicTransport(
 
         val trustManager = Libp2pTrustManager(Optional.ofNullable(addr.getPeerId()))
         val sslContext = quicSslContext(true, trustManager)
+
         // The QUIC client codec is a non-@Sharable handler, so each socket attempt needs its own.
         fun newClientCodec() = QuicClientCodecBuilder()
             .sslEngineProvider { q -> sslContext.newEngine(q.alloc()) }
@@ -344,10 +345,11 @@ class QuicTransport(
                     ch.pipeline().addLast(object : ChannelInboundHandlerAdapter() {
                         @Deprecated("Deprecated in Java")
                         override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
-                            if (cause is PortUnreachableException)
+                            if (cause is PortUnreachableException) {
                                 logger.debug("Ignoring ICMP port-unreachable on QUIC dial to {}", targetAddr)
-                            else
+                            } else {
                                 ctx.fireExceptionCaught(cause)
+                            }
                         }
                     })
                     ch
@@ -355,7 +357,7 @@ class QuicTransport(
 
         val family = if (targetAddr.address is Inet6Address) AddressFamily.IPV6 else AddressFamily.IPV4
         val listenPort = (listenerChannelsByFamily[family]?.localAddress() as? InetSocketAddress)?.port
-        val udpChannelFuture: CompletableFuture<Channel> = if (soReusePortSupported && listenPort != null && listenPort != 0)
+        val udpChannelFuture: CompletableFuture<Channel> = if (soReusePortSupported && listenPort != null && listenPort != 0) {
             // Fall back to an ephemeral source port if reuse fails: SO_REUSEPORT is unsupported on this
             // OS (e.g. Windows), or an existing connection already occupies this (listenPort -> remote)
             // 4-tuple so connect() would EADDRINUSE. (handle+thenCompose rather than exceptionallyCompose,
@@ -363,8 +365,9 @@ class QuicTransport(
             dialReusingListenPort(listenPort)
                 .handle { ch, ex -> if (ex != null) dialFromEphemeralPort() else CompletableFuture.completedFuture(ch) }
                 .thenCompose { it }
-        else
+        } else {
             dialFromEphemeralPort()
+        }
 
         val quicConnFuture: CompletableFuture<QuicChannel> = udpChannelFuture
             .thenCompose { udpChannel ->
