@@ -10,9 +10,12 @@ import io.libp2p.protocol.Ping;
 import io.libp2p.protocol.PingController;
 import io.libp2p.security.tls.TlsSecureChannel;
 import io.libp2p.transport.tcp.TcpTransport;
+import java.net.StandardSocketOptions;
+import java.nio.channels.DatagramChannel;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -22,6 +25,19 @@ import org.junit.jupiter.api.Test;
 public class QuicReusePortTestJava {
   private static int getPort() {
     return new Random().nextInt(20_000) + 10_000;
+  }
+
+  /**
+   * Whether this OS supports SO_REUSEPORT, probed the same way {@code QuicTransport} does. Reusing
+   * the listen port for a dial socket relies on it, so on platforms without it (e.g. Windows) the
+   * transport falls back to an ephemeral source port and this behaviour cannot be asserted.
+   */
+  private static boolean soReusePortSupported() {
+    try (DatagramChannel ch = DatagramChannel.open()) {
+      return ch.supportedOptions().contains(StandardSocketOptions.SO_REUSEPORT);
+    } catch (Exception e) {
+      return false;
+    }
   }
 
   private static Host quicHost(int port) {
@@ -38,6 +54,10 @@ public class QuicReusePortTestJava {
 
   @Test
   void dialReusesTheListenPort() throws Exception {
+    Assumptions.assumeTrue(
+        soReusePortSupported(),
+        "SO_REUSEPORT is unsupported on this OS (e.g. Windows); dials fall back to an ephemeral"
+            + " source port, so reuse of the listen port cannot be asserted");
     int portA = getPort();
     int portB = getPort();
     Host clientHost = quicHost(portA);
