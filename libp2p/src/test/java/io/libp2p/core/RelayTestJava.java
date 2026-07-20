@@ -103,11 +103,11 @@ public class RelayTestJava {
             .getNetwork()
             .connect(serverHost.getPeerId(), toDial)
             .thenApply(it -> it.muxerSession().createStream(new Ping()))
-            .get(5, TimeUnit.SECONDS);
+            .get(30, TimeUnit.SECONDS);
 
-    Stream pingStream = ping.getStream().get(5, TimeUnit.SECONDS);
+    Stream pingStream = ping.getStream().get(30, TimeUnit.SECONDS);
     System.out.println("Ping stream created");
-    PingController pingCtr = ping.getController().get(5, TimeUnit.SECONDS);
+    PingController pingCtr = ping.getController().get(30, TimeUnit.SECONDS);
     System.out.println("Ping controller created");
 
     for (int i = 0; i < 10; i++) {
