@@ -23,7 +23,9 @@ import java.net.BindException
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.StandardSocketOptions
 import java.nio.channels.ServerSocketChannel
+import java.nio.channels.SocketChannel
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit.SECONDS
 
@@ -123,6 +125,39 @@ class TcpTransportTest : TransportTests() {
             }
         }
     }
+
+    @Test
+    fun `dial reuses the listen port as the source port`() {
+        assumeTrue(soReusePortSupported(), "SO_REUSEPORT not supported on this OS")
+
+        val serverPort = 21300
+        val clientListenPort = 21301
+        val server = makeTransport()
+        try {
+            server.listen(Multiaddr("/ip4/127.0.0.1/tcp/$serverPort"), nullConnHandler).get(5, SECONDS)
+            // The client both listens (giving it a port to reuse) and dials the server.
+            transportUnderTest.listen(Multiaddr("/ip4/127.0.0.1/tcp/$clientListenPort"), nullConnHandler)
+                .get(5, SECONDS)
+
+            val conn = transportUnderTest.dial(
+                Multiaddr("/ip4/127.0.0.1/tcp/$serverPort"),
+                nullConnHandler
+            ).get(15, SECONDS)
+
+            val sourcePort = requireNotNull(conn.localAddress().getFirstComponent(TCP))
+                .let { requireNotNull(it.stringValue).toInt() }
+            assertEquals(
+                clientListenPort,
+                sourcePort,
+                "outbound TCP should originate from our listen port via SO_REUSEPORT"
+            )
+        } finally {
+            server.close().get(5, SECONDS)
+        }
+    }
+
+    private fun soReusePortSupported(): Boolean =
+        SocketChannel.open().use { it.supportedOptions().contains(StandardSocketOptions.SO_REUSEPORT) }
 
     private fun assumeIpv6LoopbackBindable(loopback: Inet6Address) {
         try {

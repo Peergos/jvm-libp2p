@@ -21,10 +21,15 @@ import io.netty.channel.ChannelHandler
 import io.netty.channel.ChannelOption
 import io.netty.channel.MultiThreadIoEventLoopGroup
 import io.netty.channel.nio.NioIoHandler
+import io.netty.channel.socket.nio.NioChannelOption
 import io.netty.channel.socket.nio.NioServerSocketChannel
 import io.netty.channel.socket.nio.NioSocketChannel
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
+import java.net.Inet6Address
 import java.net.InetSocketAddress
 import java.net.SocketAddress
+import java.net.StandardSocketOptions
 import java.time.Duration
 import java.util.concurrent.CompletableFuture
 
@@ -36,6 +41,21 @@ abstract class PlainNettyTransport(
 ) : NettyTransport { // class NettyTransportBase
     private var closed = false
     var connectTimeout = Duration.ofSeconds(15)
+
+    private val logger: Logger = LoggerFactory.getLogger(PlainNettyTransport::class.java)
+
+    private val SO_REUSEPORT: ChannelOption<Boolean> = NioChannelOption.of(StandardSocketOptions.SO_REUSEPORT)
+
+    // SO_REUSEPORT lets a dial socket share the listener's port, so our outbound TCP connections
+    // originate from our listen port and peers report our real listen mapping in identify's observedAddr -
+    // which is what AutoNAT/DCUtR need for a NATed node. Unsupported on some OSes (e.g. Windows), where we
+    // dial from ephemeral ports instead. (go-libp2p's reuseport TCP transport does the same.)
+    private val soReusePortSupported: Boolean = try {
+        java.nio.channels.SocketChannel.open().use { it.supportedOptions().contains(StandardSocketOptions.SO_REUSEPORT) }
+    } catch (e: Exception) {
+        logger.debug("Could not probe SO_REUSEPORT support, assuming unavailable", e)
+        false
+    }
 
     private val listeners = mutableMapOf<Multiaddr, Channel>()
     private val channels = mutableListOf<Channel>()
@@ -59,6 +79,9 @@ abstract class PlainNettyTransport(
         ServerBootstrap().apply {
             group(bossGroup, workerGroup)
             channel(NioServerSocketChannel::class.java)
+            // Let reuse-port dial sockets share this listen port (see dial()).
+            option(ChannelOption.SO_REUSEADDR, true)
+            if (soReusePortSupported) option(SO_REUSEPORT, true)
         }
     }
 
@@ -150,22 +173,53 @@ abstract class PlainNettyTransport(
         if (closed) throw Libp2pException("Transport is closed")
 
         val remotePeerId = addr.getPeerId()
-        val connectionBuilder = makeConnectionBuilder(connHandler, true, remotePeerId, preHandler)
-        val channelHandler = clientTransportBuilder(connectionBuilder, addr) ?: connectionBuilder
+        val targetAddr = fromMultiaddr(addr)
 
-        val chanFuture = client.clone()
-            .handler(channelHandler)
-            .connect(fromMultiaddr(addr))
-            .also { registerChannel(it.channel()) }
-
-        val connection = chanFuture.toCompletableFuture()
-            .thenCompose { connectionBuilder.connectionEstablished }
-        connection.whenComplete { _, _ ->
-            if (connection.isCancelled) {
-                chanFuture.channel().close()
+        // A single dial attempt. A fresh connectionBuilder/handler is created per attempt because Netty
+        // handlers are not @Sharable and cannot be added to a second channel's pipeline on a retry.
+        // Returns the connect future (for the retry decision) and the established-connection future.
+        fun dialFrom(bootstrap: Bootstrap): Pair<CompletableFuture<Channel>, CompletableFuture<Connection>> {
+            val connectionBuilder = makeConnectionBuilder(connHandler, true, remotePeerId, preHandler)
+            val channelHandler = clientTransportBuilder(connectionBuilder, addr) ?: connectionBuilder
+            val chanFuture = bootstrap
+                .handler(channelHandler)
+                .connect(targetAddr)
+                .also { registerChannel(it.channel()) }
+            val connected = chanFuture.toCompletableFuture()
+            val connection = connected.thenCompose { connectionBuilder.connectionEstablished }
+            connection.whenComplete { _, _ ->
+                if (connection.isCancelled) {
+                    chanFuture.channel().close()
+                }
             }
+            return connected to connection
         }
-        return connection
+
+        // Dial from an ephemeral source port (the kernel picks it); peers observe a throwaway source port.
+        fun dialFromEphemeralPort(): CompletableFuture<Connection> = dialFrom(client.clone()).second
+
+        // Reuse our listen port for the dial socket (SO_REUSEADDR + SO_REUSEPORT) so outbound connections
+        // originate from our listen port; peers then observe our real listen mapping.
+        fun dialReusingListenPort(listenPort: Int): Pair<CompletableFuture<Channel>, CompletableFuture<Connection>> =
+            dialFrom(
+                client.clone()
+                    .option(ChannelOption.SO_REUSEADDR, true)
+                    .option(SO_REUSEPORT, true)
+                    .localAddress(InetSocketAddress(listenPort))
+            )
+
+        val listenPort = reusableListenPort(targetAddr)
+        return if (soReusePortSupported && listenPort != null) {
+            // Fall back to an ephemeral source port if the reuse dial's connect fails: an existing
+            // (listenPort -> remote) 4-tuple makes bind/connect fail with EADDRINUSE. (handle+thenCompose
+            // rather than exceptionallyCompose, which is Java 12+ and this module targets Java 11.)
+            val (connected, connection) = dialReusingListenPort(listenPort)
+            connected
+                .handle { _, ex -> if (ex != null) dialFromEphemeralPort() else connection }
+                .thenCompose { it }
+        } else {
+            dialFromEphemeralPort()
+        }
     } // dial
 
     protected abstract fun clientTransportBuilder(
@@ -226,6 +280,24 @@ abstract class PlainNettyTransport(
         val port = portFromMultiaddr(addr)
         return InetSocketAddress(host, port)
     } // fromMultiaddr
+
+    /** Port of a bound listener of the same address family as [target], for a reuse-port dial, or null. */
+    private fun reusableListenPort(target: InetSocketAddress): Int? {
+        val targetIsV6 = target.address is Inet6Address
+        val listenPort = synchronized(this@PlainNettyTransport) {
+            listeners.values
+                .mapNotNull { it.localAddress() as? InetSocketAddress }
+                .firstOrNull { (it.address is Inet6Address) == targetIsV6 && it.port != 0 }
+                ?.port
+        } ?: return null
+        // Reusing our listen port as the source port while dialing that same port on the loopback
+        // interface would connect the socket to itself (TCP simultaneous open), so skip reuse there.
+        // Remote peers on the same port number are unaffected: the destination IP differs.
+        if (target.address?.isLoopbackAddress == true && target.port == listenPort) {
+            return null
+        }
+        return listenPort
+    }
 
     override fun localAddress(nettyChannel: Channel): Multiaddr = toMultiaddr(nettyChannel.localAddress())
     override fun remoteAddress(nettyChannel: Channel): Multiaddr = toMultiaddr(nettyChannel.remoteAddress())
