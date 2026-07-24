@@ -285,10 +285,12 @@ abstract class PlainNettyTransport(
     private fun reusableListenPort(target: InetSocketAddress): Int? {
         val targetIsV6 = target.address is Inet6Address
         val listenPort = synchronized(this@PlainNettyTransport) {
-            listeners.values
-                .mapNotNull { it.localAddress() as? InetSocketAddress }
-                .firstOrNull { (it.address is Inet6Address) == targetIsV6 && it.port != 0 }
-                ?.port
+            listeners.entries
+                .firstOrNull { (addr, ch) ->
+                    listenAddrIsV6(addr, ch) == targetIsV6 &&
+                        ((ch.localAddress() as? InetSocketAddress)?.port ?: 0) != 0
+                }
+                ?.let { (_, ch) -> (ch.localAddress() as? InetSocketAddress)?.port }
         } ?: return null
         // Reusing our listen port as the source port while dialing that same port on the loopback
         // interface would connect the socket to itself (TCP simultaneous open), so skip reuse there.
@@ -297,6 +299,18 @@ abstract class PlainNettyTransport(
             return null
         }
         return listenPort
+    }
+
+    /**
+     * The address family a listener serves, taken from the multiaddr we bound rather than the socket's
+     * reported local address: the JVM binds an /ip4/0.0.0.0 listener to a dual-stack `::` socket, so the
+     * socket reports IPv6 even though it serves (and should be reuse-dialed for) IPv4. DNS listen addresses,
+     * which carry no IP version, fall back to the bound socket's family.
+     */
+    private fun listenAddrIsV6(addr: Multiaddr, ch: Channel): Boolean = when {
+        addr.has(Protocol.IP6) -> true
+        addr.has(Protocol.IP4) -> false
+        else -> (ch.localAddress() as? InetSocketAddress)?.address is Inet6Address
     }
 
     override fun localAddress(nettyChannel: Channel): Multiaddr = toMultiaddr(nettyChannel.localAddress())

@@ -135,8 +135,10 @@ class TcpTransportTest : TransportTests() {
         val server = makeTransport()
         try {
             server.listen(Multiaddr("/ip4/127.0.0.1/tcp/$serverPort"), nullConnHandler).get(5, SECONDS)
-            // The client both listens (giving it a port to reuse) and dials the server.
-            transportUnderTest.listen(Multiaddr("/ip4/127.0.0.1/tcp/$clientListenPort"), nullConnHandler)
+            // The client both listens (giving it a port to reuse) and dials the server. Listen on the
+            // /ip4 wildcard, which the JVM binds to a dual-stack :: socket - reuse must still engage for
+            // the IPv4 dial (the family is taken from the listen multiaddr, not the bound socket).
+            transportUnderTest.listen(Multiaddr("/ip4/0.0.0.0/tcp/$clientListenPort"), nullConnHandler)
                 .get(5, SECONDS)
 
             val conn = transportUnderTest.dial(
