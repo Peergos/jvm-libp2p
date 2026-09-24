@@ -197,11 +197,14 @@ public class RelayTransport implements Transport, HostConsumer {
     int split = comps.indexOf(new MultiaddrComponent(Protocol.P2PCIRCUIT, null));
     Multiaddr relay = new Multiaddr(comps.subList(0, split));
     Multiaddr target = new Multiaddr(comps.subList(split, comps.size()));
-    CircuitHopProtocol.HopController ctr = hop.dial(us, relay).getController().join();
-    // request proxy to target
-    Stream stream = ctr.connect(target.getPeerId()).join();
-    // upgrade with sec and muxer
-    return upgradeStream(stream, true, upgrader, this, target.getPeerId(), connHandler);
+    // Never block here: callers may be on a Netty event loop, which the relay handshake needs.
+    return hop.dial(us, relay)
+        .getController()
+        // request proxy to target
+        .thenCompose(ctr -> ctr.connect(target.getPeerId()))
+        // upgrade with sec and muxer
+        .thenCompose(
+            stream -> upgradeStream(stream, true, upgrader, this, target.getPeerId(), connHandler));
   }
 
   public static CompletableFuture<Connection> upgradeStream(
