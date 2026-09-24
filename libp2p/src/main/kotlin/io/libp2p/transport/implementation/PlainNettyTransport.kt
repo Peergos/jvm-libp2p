@@ -50,15 +50,30 @@ abstract class PlainNettyTransport(
     // originate from our listen port and peers report our real listen mapping in identify's observedAddr -
     // which is what AutoNAT/DCUtR need for a NATed node. Unsupported on some OSes (e.g. Windows), where we
     // dial from ephemeral ports instead. (go-libp2p's reuseport TCP transport does the same.)
-    private val soReusePortSupported: Boolean = try {
-        java.nio.channels.SocketChannel.open().use { it.supportedOptions().contains(StandardSocketOptions.SO_REUSEPORT) }
-    } catch (e: Exception) {
-        logger.debug("Could not probe SO_REUSEPORT support, assuming unavailable", e)
+    // -Dlibp2p.disableReusePort=true forces the ephemeral-port dial path, for isolating whether a
+    // problem is specific to the reuse-port dial.
+    private val soReusePortSupported: Boolean = if (java.lang.Boolean.getBoolean("libp2p.disableReusePort")) {
         false
+    } else {
+        try {
+            java.nio.channels.SocketChannel.open().use { it.supportedOptions().contains(StandardSocketOptions.SO_REUSEPORT) }
+        } catch (e: Exception) {
+            logger.debug("Could not probe SO_REUSEPORT support, assuming unavailable", e)
+            false
+        }
     }
 
     private val listeners = mutableMapOf<Multiaddr, Channel>()
     private val channels = mutableListOf<Channel>()
+
+    companion object {
+        /** Open/close ledger for dial channels. channels-created minus channels-closed is the number
+         *  of dial sockets this transport is still holding; connection-ok plus connection-failed
+         *  against channels-created shows how many dials never completed at all. Diagnostic only. */
+        @JvmField
+        val DIAL_LEDGER: MutableMap<String, java.util.concurrent.atomic.AtomicLong> =
+            java.util.concurrent.ConcurrentHashMap()
+    }
 
     private var workerGroup by lazyVar {
         MultiThreadIoEventLoopGroup(NioIoHandler.newFactory())
@@ -185,10 +200,23 @@ abstract class PlainNettyTransport(
                 .handler(channelHandler)
                 .connect(targetAddr)
                 .also { registerChannel(it.channel()) }
+            DIAL_LEDGER.computeIfAbsent("channels-created") { java.util.concurrent.atomic.AtomicLong() }.incrementAndGet()
+            chanFuture.channel().closeFuture().addListener {
+                DIAL_LEDGER.computeIfAbsent("channels-closed") { java.util.concurrent.atomic.AtomicLong() }.incrementAndGet()
+            }
             val connected = chanFuture.toCompletableFuture()
             val connection = connected.thenCompose { connectionBuilder.connectionEstablished }
-            connection.whenComplete { _, _ ->
-                if (connection.isCancelled) {
+            connection.whenComplete { _, ex ->
+                DIAL_LEDGER.computeIfAbsent(if (ex == null) "connection-ok" else "connection-failed") {
+                    java.util.concurrent.atomic.AtomicLong()
+                }.incrementAndGet()
+            }
+            connection.whenComplete { _, ex ->
+                // Any non-success outcome must release the channel, not just cancellation. A dial
+                // that connects at the transport level and then fails to be upgraded - a peer that
+                // accepts packets but never completes the handshake, say - completes this future
+                // exceptionally without cancelling it, and previously left its socket open.
+                if (ex != null) {
                     chanFuture.channel().close()
                 }
             }
@@ -214,9 +242,32 @@ abstract class PlainNettyTransport(
             // (listenPort -> remote) 4-tuple makes bind/connect fail with EADDRINUSE. (handle+thenCompose
             // rather than exceptionallyCompose, which is Java 12+ and this module targets Java 11.)
             val (connected, connection) = dialReusingListenPort(listenPort)
-            connected
-                .handle { _, ex -> if (ex != null) dialFromEphemeralPort() else connection }
+            val abandoned = java.util.concurrent.atomic.AtomicBoolean(false)
+            val fallback = java.util.concurrent.atomic.AtomicReference<CompletableFuture<Connection>?>()
+            val result = connected
+                .handle { _, ex ->
+                    if (ex != null) {
+                        dialFromEphemeralPort().also {
+                            fallback.set(it)
+                            if (abandoned.get()) it.cancel(true)
+                        }
+                    } else {
+                        connection
+                    }
+                }
                 .thenCompose { it }
+            // Callers cancel the future this method returns (see NetworkImpl.connect, which cancels
+            // the losing dials of a parallel fan-out). Cancelling a derived future does not
+            // propagate upstream, so without this the underlying dials never learn they lost and
+            // their channels are never closed.
+            result.whenComplete { _, ex ->
+                if (ex != null) {
+                    abandoned.set(true)
+                    connection.cancel(true)
+                    fallback.get()?.cancel(true)
+                }
+            }
+            result
         } else {
             dialFromEphemeralPort()
         }
