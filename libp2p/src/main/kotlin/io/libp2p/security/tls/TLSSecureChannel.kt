@@ -119,6 +119,8 @@ fun buildTlsHandler(
         .ciphers(listOf("TLS_AES_128_GCM_SHA256", "TLS_AES_256_GCM_SHA384", "TLS_CHACHA20_POLY1305_SHA256"))
         .clientAuth(ClientAuth.REQUIRE)
         .trustManager(Libp2pTrustManager(expectedRemotePeer))
+        // peers are authenticated by the peer id in their self signed cert, not a hostname
+        .endpointIdentificationAlgorithm(null)
         .sslProvider(SslProvider.OPENSSL)
         .secureRandom(SecureRandom())
         .applicationProtocolConfig(

@@ -529,6 +529,8 @@ class QuicTransport(
             }
             )
             .trustManager(trustManager)
+            // peers are authenticated by the peer id in their self signed cert, not a hostname
+            .endpointIdentificationAlgorithm(null)
             .applicationProtocols("libp2p")
             .build()
     }
