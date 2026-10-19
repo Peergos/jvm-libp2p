@@ -122,6 +122,14 @@ public class CircuitHopProtocol extends ProtobufProtocolHandler<CircuitHopProtoc
 
     Optional<Reservation> allowConnection(PeerId target, PeerId initiator);
 
+    /**
+     * Charges bytes forwarded to or from a reserved target, on any of its circuits, and returns how
+     * many milliseconds to wait before forwarding more on that circuit.
+     */
+    default long forwarded(PeerId target, long bytes) {
+      return 0;
+    }
+
     static RelayManager limitTo(PrivKey priv, PeerId relayPeerId, int concurrent) {
       return new RelayManager() {
         Map<PeerId, Reservation> reservations = new HashMap<>();
@@ -370,8 +378,8 @@ public class CircuitHopProtocol extends ProtobufProtocolHandler<CircuitHopProtoc
                                                 Duration.of(
                                                     resv.durationSeconds, ChronoUnit.SECONDS)));
                                       }
-                                      fromRequestor.pushHandler(new ProxyHandler(toTarget));
-                                      toTarget.pushHandler(new ProxyHandler(fromRequestor));
+                                      fromRequestor.pushHandler(proxy(toTarget, target));
+                                      toTarget.pushHandler(proxy(fromRequestor, target));
                                     } else {
                                       stream.writeAndFlush(
                                           Circuit.HopMessage.newBuilder()
@@ -396,6 +404,14 @@ public class CircuitHopProtocol extends ProtobufProtocolHandler<CircuitHopProtoc
       }
     }
 
+    private MeteredProxyHandler proxy(Stream to, PeerId reserved) {
+      return new MeteredProxyHandler(
+          to::writeAndFlush,
+          to::close,
+          bytes -> manager.forwarded(reserved, bytes),
+          MAX_QUEUED_BYTES);
+    }
+
     @Override
     public CompletableFuture<Stream> connect(PeerId target) {
       return CompletableFuture.failedFuture(
@@ -408,21 +424,8 @@ public class CircuitHopProtocol extends ProtobufProtocolHandler<CircuitHopProtoc
     }
   }
 
-  private static class ProxyHandler extends ChannelInboundHandlerAdapter {
-
-    private final Stream target;
-
-    public ProxyHandler(Stream target) {
-      this.target = target;
-    }
-
-    @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-      if (msg instanceof ByteBuf) {
-        target.writeAndFlush(msg);
-      }
-    }
-  }
+  /** What a circuit may queue while paused before it is closed, beyond what flow control allows. */
+  private static final long MAX_QUEUED_BYTES = 4 * 1024 * 1024;
 
   private static final int TRAFFIC_LIMIT = 2 * 1024;
   private final RelayManager manager;
