@@ -38,10 +38,14 @@ import java.net.InetSocketAddress
 import java.net.PortUnreachableException
 import java.net.SocketAddress
 import java.net.StandardSocketOptions
+import java.security.KeyStore
+import java.time.Duration
+import java.time.Instant
 import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.KeyManagerFactory
 
 enum class AddressFamily { IPV4, IPV6 }
 
@@ -73,6 +77,13 @@ class QuicTransport(
     private val logger = LoggerFactory.getLogger(QuicTransport::class.java)
 
     private var closed = false
+
+    private class ClientCert(val keyManagerFactory: KeyManagerFactory, val created: Instant)
+
+    /** Building a cert and its key store costs several ms of CPU, too much to pay on every dial.
+     *  Rebuilt well before the cert's one year validity runs out. */
+    @Volatile
+    private var clientCert: ClientCert? = null
 
     private val connectTimeout get() = config.connectTimeout
 
@@ -179,6 +190,8 @@ class QuicTransport(
     private var incomingMultistreamProtocol: MultistreamProtocol by lazyVar { multistreamProtocol }
 
     companion object {
+        private val CLIENT_CERT_LIFETIME: Duration = Duration.ofDays(1)
+
         @JvmStatic
         @JvmOverloads
         fun Ed25519(k: PrivKey, p: List<ProtocolBinding<*>>, config: QuicConfig = QuicConfig()): QuicTransport {
@@ -516,16 +529,30 @@ class QuicTransport(
         return digest.digest().copyOf(16)
     }
 
-    fun quicSslContext(isClient: Boolean, trustManager: Libp2pTrustManager): QuicSslContext {
+    private fun clientKeyManagerFactory(): KeyManagerFactory {
+        val current = clientCert
+        if (current != null && current.created.isAfter(Instant.now().minus(CLIENT_CERT_LIFETIME))) {
+            return current.keyManagerFactory
+        }
         val connectionKeys = if (certAlgorithm == "ECDSA") generateEcdsaKeyPair() else generateEd25519KeyPair()
-        val javaPrivateKey = getJavaKey(connectionKeys.first)
         val cert = buildCert(localKey, connectionKeys.first)
-        logger.trace("Building {} keys and cert for peer id {}", certAlgorithm, PeerId.fromPubKey(localKey.publicKey()))
+        val keyStore = KeyStore.getInstance(KeyStore.getDefaultType())
+        keyStore.load(null, null)
+        keyStore.setKeyEntry("key", getJavaKey(connectionKeys.first), CharArray(0), arrayOf(cert))
+        val factory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
+        factory.init(keyStore, CharArray(0))
+        clientCert = ClientCert(factory, Instant.now())
+        return factory
+    }
+
+    fun quicSslContext(isClient: Boolean, trustManager: Libp2pTrustManager): QuicSslContext {
         return (
             if (isClient) {
-                QuicSslContextBuilder.forClient().keyManager(javaPrivateKey, null, cert)
+                QuicSslContextBuilder.forClient().keyManager(clientKeyManagerFactory(), null)
             } else {
-                QuicSslContextBuilder.forServer(javaPrivateKey, null, cert).clientAuth(ClientAuth.REQUIRE)
+                val connectionKeys = if (certAlgorithm == "ECDSA") generateEcdsaKeyPair() else generateEd25519KeyPair()
+                val cert = buildCert(localKey, connectionKeys.first)
+                QuicSslContextBuilder.forServer(getJavaKey(connectionKeys.first), null, cert).clientAuth(ClientAuth.REQUIRE)
             }
             )
             .trustManager(trustManager)
