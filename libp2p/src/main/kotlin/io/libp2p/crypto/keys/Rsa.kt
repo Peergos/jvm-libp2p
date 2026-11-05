@@ -74,6 +74,9 @@ class RsaPrivateKey(private val sk: JavaPrivateKey, private val pk: JavaPublicKe
 }
 
 /**
+ * Public keys use the JDK provider, not BouncyCastle: BouncyCastle primality tests the modulus of
+ * every new key, costing ~5ms per remote RSA peer, ~25x the JDK's decode and verify.
+ *
  * @param k the public key backing this instance.
  */
 class RsaPublicKey(private val k: JavaPublicKey) : PubKey(Crypto.KeyType.RSA) {
@@ -81,7 +84,7 @@ class RsaPublicKey(private val k: JavaPublicKey) : PubKey(Crypto.KeyType.RSA) {
     override fun raw(): ByteArray = k.encoded
 
     override fun verify(data: ByteArray, signature: ByteArray): Boolean =
-        with(Signature.getInstance(SHA_256_WITH_RSA, Libp2pCrypto.provider)) {
+        with(Signature.getInstance(SHA_256_WITH_RSA)) {
             initVerify(k)
             update(data)
             verify(signature)
@@ -125,12 +128,7 @@ fun generateRsaKeyPair(bits: Int, random: SecureRandom = SecureRandom()): Pair<P
  * @return a private key.
  */
 fun unmarshalRsaPublicKey(keyBytes: ByteArray): PubKey =
-    RsaPublicKey(
-        KeyFactory.getInstance(
-            RSA_ALGORITHM,
-            Libp2pCrypto.provider
-        ).generatePublic(X509EncodedKeySpec(keyBytes))
-    )
+    RsaPublicKey(KeyFactory.getInstance(RSA_ALGORITHM).generatePublic(X509EncodedKeySpec(keyBytes)))
 
 /**
  * Unmarshals the given key bytes (in PKCS1 format) into an RSA PKCS8 private key instance.

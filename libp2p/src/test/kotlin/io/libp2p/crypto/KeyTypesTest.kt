@@ -1,9 +1,11 @@
 package io.libp2p.crypto
 
+import io.libp2p.core.crypto.unmarshalPublicKey
 import io.libp2p.crypto.keys.generateEcdsaKeyPair
 import io.libp2p.crypto.keys.generateEd25519KeyPair
 import io.libp2p.crypto.keys.generateRsaKeyPair
 import io.libp2p.crypto.keys.generateSecp256k1KeyPair
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -23,6 +25,16 @@ class KeyTypesTest {
         val toSign = "G'day!".toByteArray()
         val signed = pair.first.sign(toSign)
         assertTrue(pair.second.verify(toSign, signed))
+    }
+
+    @Test
+    fun rsaRemoteKey() {
+        val pair = generateRsaKeyPair(2048)
+        val toSign = "G'day!".toByteArray()
+        val signed = pair.first.sign(toSign)
+        val remote = unmarshalPublicKey(pair.second.bytes())
+        assertTrue(remote.verify(toSign, signed))
+        assertFalse(remote.verify("G'bye!".toByteArray(), signed))
     }
 
     @Test
