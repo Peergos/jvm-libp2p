@@ -32,7 +32,7 @@ dependencies {
     api("com.google.protobuf:protobuf-java")
 
     implementation("com.github.multiformats:java-multibase")
-    implementation("tech.pegasys:noise-java")
+    implementation("com.github.peergos:noise-java")
 
     implementation("org.bouncycastle:bcprov-jdk18on")
     implementation("org.bouncycastle:bcpkix-jdk18on")

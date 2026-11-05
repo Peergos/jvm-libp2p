@@ -43,7 +43,7 @@ dependencyManagement {
         }
         dependency "io.netty:netty-tcnative-boringssl-static:2.0.84.Final"
         dependency "com.github.multiformats:java-multibase:v1.1.1"
-        dependency "tech.pegasys:noise-java:22.1.0"
+        dependency "com.github.peergos:noise-java:22.1.1"
         dependencySet(group: "org.bouncycastle", version: "1.78.1") {
             entry 'bcprov-jdk18on'
             entry 'bcpkix-jdk18on'
