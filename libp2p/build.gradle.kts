@@ -16,7 +16,7 @@ dependencies {
     implementation("io.netty:netty-codec-http")
     implementation("io.netty:netty-codec-protobuf")
     implementation("io.netty:netty-transport-classes-epoll")
-    implementation("io.netty:netty-codec-classes-quic")
+    implementation("com.github.Peergos:netty")
     // OS-specific bindings
     implementation("io.netty:netty-tcnative-boringssl-static::linux-x86_64")
     implementation("io.netty:netty-tcnative-boringssl-static::linux-aarch_64")

@@ -12,8 +12,6 @@ dependencyResolutionManagement {
         maven { url "https://artifacts.consensys.net/public/maven/maven/" }
         maven { url "https://jitpack.io" }
         google()
-        // The kwik based Netty QUIC fork and kwik, until they are published
-        mavenLocal()
     }
 }
 
