@@ -305,10 +305,36 @@ fun verifyAndExtractIdentity(chain: Array<Certificate>): TlsPeerIdentity {
     if (chain.size != 1) {
         throw java.lang.IllegalStateException("Cert chain must have exactly 1 element!")
     }
-    val cert = chain.get(0)
+    val encoded = chain.get(0).getEncoded()
+    val key = java.nio.ByteBuffer.wrap(encoded)
+    val verified = verifiedCerts[key] ?: verifyCertSignatures(encoded).also { verifiedCerts[key] = it }
+    val now = Date()
+    if (verified.notAfter.before(now)) {
+        throw IllegalStateException("TLS certificate has expired!")
+    }
+    if (verified.notBefore.after(now)) {
+        throw IllegalStateException("TLS certificate is not valid yet!")
+    }
+    return verified.identity
+}
+
+private class VerifiedCert(val identity: TlsPeerIdentity, val notBefore: Date, val notAfter: Date)
+
+private const val VERIFIED_CERTS_MAX = 1024
+
+// Both the trust manager and the QUIC transport verify the peer's certificate in each handshake,
+// and the signature checks are most of a handshake's CPU, so remember certificates already verified.
+private val verifiedCerts: MutableMap<java.nio.ByteBuffer, VerifiedCert> = Collections.synchronizedMap(
+    object : LinkedHashMap<java.nio.ByteBuffer, VerifiedCert>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<java.nio.ByteBuffer, VerifiedCert>?) =
+            size > VERIFIED_CERTS_MAX
+    }
+)
+
+private fun verifyCertSignatures(encoded: ByteArray): VerifiedCert {
     // peerid is in the certificate extension
     val bcCert = org.bouncycastle.asn1.x509.Certificate
-        .getInstance(ASN1Primitive.fromByteArray(cert.getEncoded()))
+        .getInstance(ASN1Primitive.fromByteArray(encoded))
     val bcX509Cert = X509CertificateHolder(bcCert)
     val libp2pOid = ASN1ObjectIdentifier("1.3.6.1.4.1.53594.1.1")
     val extension = bcX509Cert.extensions.getExtension(libp2pOid)
@@ -330,14 +356,7 @@ fun verifyAndExtractIdentity(chain: Array<Certificate>): TlsPeerIdentity {
     if (!bcX509Cert.isSignatureValid(getContentVerifier(bcX509Cert))) {
         throw IllegalStateException("TLS certificate has invalid signature!")
     }
-    val now = Date()
-    if (bcCert.endDate.date.before(now)) {
-        throw IllegalStateException("TLS certificate has expired!")
-    }
-    if (bcCert.startDate.date.after(now)) {
-        throw IllegalStateException("TLS certificate is not valid yet!")
-    }
-    return TlsPeerIdentity(PeerId.fromPubKey(pubKey), pubKey)
+    return VerifiedCert(TlsPeerIdentity(PeerId.fromPubKey(pubKey), pubKey), bcCert.startDate.date, bcCert.endDate.date)
 }
 
 /**
