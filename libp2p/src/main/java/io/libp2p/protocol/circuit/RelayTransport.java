@@ -198,12 +198,14 @@ public class RelayTransport implements Transport, HostConsumer {
     Multiaddr relay = new Multiaddr(comps.subList(0, split));
     Multiaddr target = new Multiaddr(comps.subList(split, comps.size()));
     // Never block here: callers may be on a Netty event loop, which the relay handshake needs.
+    // The controller and the CONNECT reply complete on the stream's event loop mid-setup, so the
+    // next steps run elsewhere. Not on the runner, which blocks in ensureEnoughCurrentRelays.
     return hop.dial(us, relay)
         .getController()
         // request proxy to target
-        .thenCompose(ctr -> ctr.connect(target.getPeerId()))
+        .thenComposeAsync(ctr -> ctr.connect(target.getPeerId()))
         // upgrade with sec and muxer
-        .thenCompose(
+        .thenComposeAsync(
             stream -> upgradeStream(stream, true, upgrader, this, target.getPeerId(), connHandler));
   }
 
