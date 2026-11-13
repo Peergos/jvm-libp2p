@@ -41,7 +41,7 @@ dependencyManagement {
             entry 'netty-transport-classes-epoll'
         }
         // Netty's QUIC on kwik (pure Java) instead of quiche: https://github.com/Peergos/netty/tree/kwik
-        dependency "com.github.Peergos:netty:a48be02223"
+        dependency "com.github.Peergos:netty:f1dbd1b9d0"
         dependency "io.netty:netty-tcnative-boringssl-static:2.0.84.Final"
         dependency "com.github.multiformats:java-multibase:v1.1.1"
         dependency "com.github.peergos:noise-java:22.1.1"
